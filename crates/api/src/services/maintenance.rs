@@ -2,12 +2,14 @@ use chrono::{DateTime, Months, Utc};
 use shared::dto::maintenance::{
     CreateMaintenancePlanRequest, UpdateMaintenancePlanRequest,
 };
+use shared::dto::pagination::{PaginatedResponse, PaginationParams};
 use shared::{FrequencyUnit, MaintenancePlan};
 use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::errors::AppError;
 use crate::repositories::maintenance as repo;
+use crate::repositories::pagination::{clamp_limit, decode_cursor, encode_cursor};
 
 pub async fn get_by_machine(
     pool: &PgPool,
@@ -88,14 +90,79 @@ pub async fn delete(pool: &PgPool, id: Uuid) -> Result<(), AppError> {
 pub async fn get_upcoming(
     pool: &PgPool,
     days_ahead: i32,
-) -> Result<Vec<MaintenancePlan>, AppError> {
-    repo::find_upcoming(pool, days_ahead)
-        .await
-        .map_err(AppError::from)
+    pagination: &PaginationParams,
+) -> Result<PaginatedResponse<MaintenancePlan>, AppError> {
+    let limit = clamp_limit(pagination.limit);
+    let (cursor_ts, cursor_id) = decode_pagination_cursor(&pagination.cursor)?;
+
+    let (mut rows, total) =
+        repo::find_upcoming(pool, days_ahead, cursor_ts, cursor_id, limit + 1).await?;
+
+    let has_more = rows.len() > limit as usize;
+    if has_more {
+        rows.pop();
+    }
+
+    let next_cursor = if has_more {
+        rows.last().and_then(|p| {
+            p.next_due_at
+                .map(|dt| encode_cursor(&dt.to_rfc3339(), p.id))
+        })
+    } else {
+        None
+    };
+
+    Ok(PaginatedResponse {
+        items: rows,
+        next_cursor,
+        total,
+    })
 }
 
-pub async fn get_overdue(pool: &PgPool) -> Result<Vec<MaintenancePlan>, AppError> {
-    repo::find_overdue(pool).await.map_err(AppError::from)
+pub async fn get_overdue(
+    pool: &PgPool,
+    pagination: &PaginationParams,
+) -> Result<PaginatedResponse<MaintenancePlan>, AppError> {
+    let limit = clamp_limit(pagination.limit);
+    let (cursor_ts, cursor_id) = decode_pagination_cursor(&pagination.cursor)?;
+
+    let (mut rows, total) =
+        repo::find_overdue(pool, cursor_ts, cursor_id, limit + 1).await?;
+
+    let has_more = rows.len() > limit as usize;
+    if has_more {
+        rows.pop();
+    }
+
+    let next_cursor = if has_more {
+        rows.last().and_then(|p| {
+            p.next_due_at
+                .map(|dt| encode_cursor(&dt.to_rfc3339(), p.id))
+        })
+    } else {
+        None
+    };
+
+    Ok(PaginatedResponse {
+        items: rows,
+        next_cursor,
+        total,
+    })
+}
+
+fn decode_pagination_cursor(
+    cursor: &Option<String>,
+) -> Result<(Option<DateTime<Utc>>, Option<Uuid>), AppError> {
+    match cursor {
+        Some(c) => {
+            let (ts_str, id) = decode_cursor(c)?;
+            let ts = DateTime::parse_from_rfc3339(&ts_str)
+                .map(|dt| dt.with_timezone(&Utc))
+                .map_err(|_| AppError::Validation("Invalid cursor timestamp".to_string()))?;
+            Ok((Some(ts), Some(id)))
+        }
+        None => Ok((None, None)),
+    }
 }
 
 /// Calculate the next due date based on the frequency unit and value.

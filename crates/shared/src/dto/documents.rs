@@ -26,4 +26,6 @@ pub struct DocumentFilters {
     pub machine_id: Option<Uuid>,
     pub status: Option<String>,
     pub document_type_id: Option<Uuid>,
+    pub cursor: Option<String>,
+    pub limit: Option<i32>,
 }

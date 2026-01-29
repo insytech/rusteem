@@ -25,4 +25,6 @@ pub struct MachineFilters {
     pub area: Option<String>,
     pub line: Option<String>,
     pub station: Option<String>,
+    pub cursor: Option<String>,
+    pub limit: Option<i32>,
 }

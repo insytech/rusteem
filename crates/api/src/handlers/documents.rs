@@ -6,6 +6,7 @@ use uuid::Uuid;
 use shared::dto::documents::{
     CreateDocumentRequest, DocumentFilters, UpdateDocumentRequest, UpdateStatusRequest,
 };
+use shared::dto::pagination::PaginatedResponse;
 use shared::Document;
 
 use crate::errors::AppError;
@@ -16,9 +17,9 @@ use crate::state::AppState;
 pub async fn list(
     State(state): State<AppState>,
     Query(filters): Query<DocumentFilters>,
-) -> Result<Json<Vec<Document>>, AppError> {
-    let documents = service::list(&state.pool, &filters).await?;
-    Ok(Json(documents))
+) -> Result<Json<PaginatedResponse<Document>>, AppError> {
+    let result = service::list(&state.pool, &filters).await?;
+    Ok(Json(result))
 }
 
 pub async fn get_by_id(

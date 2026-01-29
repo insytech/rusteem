@@ -1,9 +1,10 @@
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::Json;
 use uuid::Uuid;
 
 use shared::dto::approvals::{PendingApproval, SubmitDecisionRequest};
+use shared::dto::pagination::{PaginatedResponse, PaginationParams};
 use shared::{Approval, ApprovalHistory};
 
 use crate::errors::AppError;
@@ -35,9 +36,10 @@ pub async fn submit_decision(
 pub async fn get_pending(
     State(state): State<AppState>,
     user: AuthUser,
-) -> Result<Json<Vec<PendingApproval>>, AppError> {
-    let pending = service::get_pending_for_role(&state.pool, &user.role).await?;
-    Ok(Json(pending))
+    Query(pagination): Query<PaginationParams>,
+) -> Result<Json<PaginatedResponse<PendingApproval>>, AppError> {
+    let result = service::get_pending_for_role(&state.pool, &user.role, &pagination).await?;
+    Ok(Json(result))
 }
 
 pub async fn get_document_history(

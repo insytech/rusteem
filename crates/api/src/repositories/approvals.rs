@@ -1,3 +1,4 @@
+use chrono::{DateTime, Utc};
 use shared::dto::approvals::PendingApproval;
 use shared::{Approval, ApprovalDecision, ApprovalHistory, ApprovalStep};
 use sqlx::PgPool;
@@ -117,19 +118,42 @@ pub async fn get_history_for_document(
 pub async fn get_pending_for_user(
     pool: &PgPool,
     role: &str,
-) -> Result<Vec<PendingApproval>, sqlx::Error> {
-    sqlx::query_as::<_, PendingApproval>(
+    cursor_created_at: Option<DateTime<Utc>>,
+    cursor_id: Option<Uuid>,
+    limit: i32,
+) -> Result<(Vec<PendingApproval>, i64), sqlx::Error> {
+    let rows = sqlx::query_as::<_, PendingApproval>(
         "SELECT a.id AS approval_id, a.document_id, d.title AS document_title,
                 s.step_order, s.role_name, a.created_at
          FROM approvals a
          JOIN approval_steps s ON a.step_id = s.id
          JOIN documents d ON a.document_id = d.id
          WHERE a.decision = 'pending' AND s.role_name = $1
-         ORDER BY a.created_at",
+           AND (
+               $2::timestamptz IS NULL
+               OR (a.created_at, a.id) > ($2, $3::uuid)
+           )
+         ORDER BY a.created_at ASC, a.id ASC
+         LIMIT $4",
     )
     .bind(role)
+    .bind(cursor_created_at)
+    .bind(cursor_id)
+    .bind(i64::from(limit))
     .fetch_all(pool)
-    .await
+    .await?;
+
+    let total: (i64,) = sqlx::query_as(
+        "SELECT COUNT(*)
+         FROM approvals a
+         JOIN approval_steps s ON a.step_id = s.id
+         WHERE a.decision = 'pending' AND s.role_name = $1",
+    )
+    .bind(role)
+    .fetch_one(pool)
+    .await?;
+
+    Ok((rows, total.0))
 }
 
 /// Check if all required steps for a document+workflow are approved.

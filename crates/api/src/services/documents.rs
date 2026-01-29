@@ -1,17 +1,54 @@
+use chrono::DateTime;
 use shared::dto::documents::{
     CreateDocumentRequest, DocumentFilters, UpdateDocumentRequest, UpdateStatusRequest,
 };
-use shared::{Document, DocumentStatus};
+use shared::dto::pagination::PaginatedResponse;
+use shared::Document;
 use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::config::AppConfig;
 use crate::errors::AppError;
 use crate::repositories::documents as repo;
+use crate::repositories::pagination::{clamp_limit, decode_cursor, encode_cursor};
 use crate::services::storage;
 
-pub async fn list(pool: &PgPool, filters: &DocumentFilters) -> Result<Vec<Document>, AppError> {
-    repo::find_all(pool, filters).await.map_err(AppError::from)
+pub async fn list(
+    pool: &PgPool,
+    filters: &DocumentFilters,
+) -> Result<PaginatedResponse<Document>, AppError> {
+    let limit = clamp_limit(filters.limit);
+    let (cursor_updated_at, cursor_id) = match &filters.cursor {
+        Some(c) => {
+            let (ts_str, id) = decode_cursor(c)?;
+            let ts = DateTime::parse_from_rfc3339(&ts_str)
+                .map(|dt| dt.with_timezone(&chrono::Utc))
+                .map_err(|_| AppError::Validation("Invalid cursor timestamp".to_string()))?;
+            (Some(ts), Some(id))
+        }
+        None => (None, None),
+    };
+
+    let (mut rows, total) =
+        repo::find_all(pool, filters, cursor_updated_at, cursor_id, limit + 1).await?;
+
+    let has_more = rows.len() > limit as usize;
+    if has_more {
+        rows.pop();
+    }
+
+    let next_cursor = if has_more {
+        rows.last()
+            .map(|d| encode_cursor(&d.updated_at.to_rfc3339(), d.id))
+    } else {
+        None
+    };
+
+    Ok(PaginatedResponse {
+        items: rows,
+        next_cursor,
+        total,
+    })
 }
 
 pub async fn get_by_id(pool: &PgPool, id: Uuid) -> Result<Document, AppError> {

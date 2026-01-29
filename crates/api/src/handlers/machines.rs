@@ -4,6 +4,7 @@ use axum::Json;
 use uuid::Uuid;
 
 use shared::dto::machines::{CreateMachineRequest, MachineFilters, UpdateMachineRequest};
+use shared::dto::pagination::PaginatedResponse;
 use shared::Machine;
 
 use crate::errors::AppError;
@@ -14,9 +15,9 @@ use crate::state::AppState;
 pub async fn list(
     State(state): State<AppState>,
     Query(filters): Query<MachineFilters>,
-) -> Result<Json<Vec<Machine>>, AppError> {
-    let machines = service::list(&state.pool, &filters).await?;
-    Ok(Json(machines))
+) -> Result<Json<PaginatedResponse<Machine>>, AppError> {
+    let result = service::list(&state.pool, &filters).await?;
+    Ok(Json(result))
 }
 
 pub async fn get_by_id(

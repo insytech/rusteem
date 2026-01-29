@@ -1,4 +1,5 @@
 use leptos::*;
+use shared::dto::pagination::PaginatedResponse;
 use shared::Document;
 
 use crate::api;
@@ -6,13 +7,50 @@ use crate::api;
 #[component]
 pub fn DocumentsPage() -> impl IntoView {
     let (refresh_counter, set_refresh) = create_signal(0u32);
+    let (documents, set_documents) = create_signal(Vec::<Document>::new());
+    let (next_cursor, set_next_cursor) = create_signal(Option::<String>::None);
+    let (total, set_total) = create_signal(0i64);
+    let (loading_more, set_loading_more) = create_signal(false);
 
-    let documents = create_resource(
+    let initial_load = create_resource(
         move || refresh_counter.get(),
-        |_| async move { api::get::<Vec<Document>>("/documents").await },
+        move |_| async move {
+            let result = api::get::<PaginatedResponse<Document>>("/documents").await;
+            if let Ok(ref page) = result {
+                set_documents.set(page.items.clone());
+                set_next_cursor.set(page.next_cursor.clone());
+                set_total.set(page.total);
+            }
+            result
+        },
     );
 
-    let trigger_refresh = move || set_refresh.update(|c| *c += 1);
+    let trigger_refresh = move || {
+        set_documents.set(vec![]);
+        set_next_cursor.set(None);
+        set_refresh.update(|c| *c += 1);
+    };
+
+    let load_more = move |_| {
+        if let Some(cursor) = next_cursor.get() {
+            set_loading_more.set(true);
+            spawn_local(async move {
+                let url = format!("/documents?cursor={cursor}");
+                match api::get::<PaginatedResponse<Document>>(&url).await {
+                    Ok(page) => {
+                        set_documents.update(|list| list.extend(page.items));
+                        set_next_cursor.set(page.next_cursor);
+                        set_total.set(page.total);
+                    }
+                    Err(e) => {
+                        web_sys::window()
+                            .and_then(|w| w.alert_with_message(&format!("Load more failed: {e}")).ok());
+                    }
+                }
+                set_loading_more.set(false);
+            });
+        }
+    };
 
     view! {
         <div>
@@ -21,8 +59,24 @@ pub fn DocumentsPage() -> impl IntoView {
             </div>
 
             <Suspense fallback=move || view! { <p class="loading">"Loading documents..."</p> }>
-                {move || documents.get().map(|result| match result {
-                    Ok(list) => view! { <DocumentTable documents=list on_deleted=Callback::new(move |_: ()| trigger_refresh())/> }.into_view(),
+                {move || initial_load.get().map(|result| match result {
+                    Ok(_) => view! {
+                        <DocumentTable documents=documents.get() on_deleted=Callback::new(move |_: ()| trigger_refresh())/>
+                        <Show when=move || next_cursor.get().is_some()>
+                            <div style="text-align: center; margin: 1rem 0;">
+                                <button
+                                    class="btn btn-primary"
+                                    on:click=load_more
+                                    disabled=move || loading_more.get()
+                                >
+                                    {move || if loading_more.get() { "Loading..." } else { "Load More" }}
+                                </button>
+                                <p style="margin-top: 0.5rem; color: var(--color-muted);">
+                                    {move || format!("Showing {} of {}", documents.get().len(), total.get())}
+                                </p>
+                            </div>
+                        </Show>
+                    }.into_view(),
                     Err(e) => view! {
                         <div class="error-message">{format!("Failed to load documents: {e}")}</div>
                     }.into_view(),

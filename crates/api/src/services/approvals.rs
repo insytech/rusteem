@@ -1,4 +1,6 @@
+use chrono::DateTime;
 use shared::dto::approvals::{PendingApproval, SubmitDecisionRequest};
+use shared::dto::pagination::{PaginatedResponse, PaginationParams};
 use shared::{Approval, ApprovalDecision, ApprovalHistory, DocumentStatus};
 use sqlx::PgPool;
 use uuid::Uuid;
@@ -6,6 +8,7 @@ use uuid::Uuid;
 use crate::errors::AppError;
 use crate::repositories::approvals as repo;
 use crate::repositories::documents as doc_repo;
+use crate::repositories::pagination::{clamp_limit, decode_cursor, encode_cursor};
 
 /// Initiate an approval workflow for a document.
 /// Creates one pending Approval per step in the workflow.
@@ -148,10 +151,40 @@ pub async fn submit_decision(
 pub async fn get_pending_for_role(
     pool: &PgPool,
     role: &str,
-) -> Result<Vec<PendingApproval>, AppError> {
-    repo::get_pending_for_user(pool, role)
-        .await
-        .map_err(AppError::from)
+    pagination: &PaginationParams,
+) -> Result<PaginatedResponse<PendingApproval>, AppError> {
+    let limit = clamp_limit(pagination.limit);
+    let (cursor_ts, cursor_id) = match &pagination.cursor {
+        Some(c) => {
+            let (ts_str, id) = decode_cursor(c)?;
+            let ts = DateTime::parse_from_rfc3339(&ts_str)
+                .map(|dt| dt.with_timezone(&chrono::Utc))
+                .map_err(|_| AppError::Validation("Invalid cursor timestamp".to_string()))?;
+            (Some(ts), Some(id))
+        }
+        None => (None, None),
+    };
+
+    let (mut rows, total) =
+        repo::get_pending_for_user(pool, role, cursor_ts, cursor_id, limit + 1).await?;
+
+    let has_more = rows.len() > limit as usize;
+    if has_more {
+        rows.pop();
+    }
+
+    let next_cursor = if has_more {
+        rows.last()
+            .map(|p| encode_cursor(&p.created_at.to_rfc3339(), p.approval_id))
+    } else {
+        None
+    };
+
+    Ok(PaginatedResponse {
+        items: rows,
+        next_cursor,
+        total,
+    })
 }
 
 /// Get approval history for a document.

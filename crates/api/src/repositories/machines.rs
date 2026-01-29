@@ -3,21 +3,51 @@ use shared::Machine;
 use sqlx::PgPool;
 use uuid::Uuid;
 
-pub async fn find_all(pool: &PgPool, filters: &MachineFilters) -> Result<Vec<Machine>, sqlx::Error> {
-    sqlx::query_as::<_, Machine>(
+pub async fn find_all(
+    pool: &PgPool,
+    filters: &MachineFilters,
+    cursor_name: Option<&str>,
+    cursor_id: Option<Uuid>,
+    limit: i32,
+) -> Result<(Vec<Machine>, i64), sqlx::Error> {
+    let rows = sqlx::query_as::<_, Machine>(
         "SELECT * FROM machines
          WHERE ($1::bool IS NULL OR active = $1)
            AND ($2::text IS NULL OR area = $2)
            AND ($3::text IS NULL OR line = $3)
            AND ($4::text IS NULL OR station = $4)
-         ORDER BY name ASC",
+           AND (
+               $5::text IS NULL
+               OR (name, id) > ($5, $6::uuid)
+           )
+         ORDER BY name ASC, id ASC
+         LIMIT $7",
     )
     .bind(filters.active)
     .bind(&filters.area)
     .bind(&filters.line)
     .bind(&filters.station)
+    .bind(cursor_name)
+    .bind(cursor_id)
+    .bind(i64::from(limit))
     .fetch_all(pool)
-    .await
+    .await?;
+
+    let total: (i64,) = sqlx::query_as(
+        "SELECT COUNT(*) FROM machines
+         WHERE ($1::bool IS NULL OR active = $1)
+           AND ($2::text IS NULL OR area = $2)
+           AND ($3::text IS NULL OR line = $3)
+           AND ($4::text IS NULL OR station = $4)",
+    )
+    .bind(filters.active)
+    .bind(&filters.area)
+    .bind(&filters.line)
+    .bind(&filters.station)
+    .fetch_one(pool)
+    .await?;
+
+    Ok((rows, total.0))
 }
 
 pub async fn find_by_id(pool: &PgPool, id: Uuid) -> Result<Option<Machine>, sqlx::Error> {

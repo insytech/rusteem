@@ -1,3 +1,4 @@
+use chrono::{DateTime, Utc};
 use shared::dto::documents::{CreateDocumentRequest, DocumentFilters, UpdateDocumentRequest};
 use shared::{Document, DocumentStatus};
 use sqlx::PgPool;
@@ -6,19 +7,44 @@ use uuid::Uuid;
 pub async fn find_all(
     pool: &PgPool,
     filters: &DocumentFilters,
-) -> Result<Vec<Document>, sqlx::Error> {
-    sqlx::query_as::<_, Document>(
+    cursor_updated_at: Option<DateTime<Utc>>,
+    cursor_id: Option<Uuid>,
+    limit: i32,
+) -> Result<(Vec<Document>, i64), sqlx::Error> {
+    let rows = sqlx::query_as::<_, Document>(
         "SELECT * FROM documents
          WHERE ($1::uuid IS NULL OR machine_id = $1)
            AND ($2::text IS NULL OR status = $2)
            AND ($3::uuid IS NULL OR document_type_id = $3)
-         ORDER BY updated_at DESC",
+           AND (
+               $4::timestamptz IS NULL
+               OR (updated_at, id) < ($4, $5::uuid)
+           )
+         ORDER BY updated_at DESC, id DESC
+         LIMIT $6",
     )
     .bind(filters.machine_id)
     .bind(&filters.status)
     .bind(filters.document_type_id)
+    .bind(cursor_updated_at)
+    .bind(cursor_id)
+    .bind(i64::from(limit))
     .fetch_all(pool)
-    .await
+    .await?;
+
+    let total: (i64,) = sqlx::query_as(
+        "SELECT COUNT(*) FROM documents
+         WHERE ($1::uuid IS NULL OR machine_id = $1)
+           AND ($2::text IS NULL OR status = $2)
+           AND ($3::uuid IS NULL OR document_type_id = $3)",
+    )
+    .bind(filters.machine_id)
+    .bind(&filters.status)
+    .bind(filters.document_type_id)
+    .fetch_one(pool)
+    .await?;
+
+    Ok((rows, total.0))
 }
 
 pub async fn find_by_id(pool: &PgPool, id: Uuid) -> Result<Option<Document>, sqlx::Error> {

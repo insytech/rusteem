@@ -8,6 +8,7 @@ use uuid::Uuid;
 use shared::dto::maintenance::{
     CompletePlanRequest, CreateMaintenancePlanRequest, UpdateMaintenancePlanRequest,
 };
+use shared::dto::pagination::{PaginatedResponse, PaginationParams};
 use shared::MaintenancePlan;
 
 use crate::errors::AppError;
@@ -18,6 +19,8 @@ use crate::state::AppState;
 #[derive(Debug, Deserialize)]
 pub struct UpcomingQuery {
     pub days: Option<i32>,
+    pub cursor: Option<String>,
+    pub limit: Option<i32>,
 }
 
 pub async fn get_by_machine(
@@ -31,17 +34,32 @@ pub async fn get_by_machine(
 pub async fn get_upcoming(
     State(state): State<AppState>,
     Query(query): Query<UpcomingQuery>,
-) -> Result<Json<Vec<MaintenancePlan>>, AppError> {
+) -> Result<Json<PaginatedResponse<MaintenancePlan>>, AppError> {
     let days = query.days.unwrap_or(7);
-    let plans = service::get_upcoming(&state.pool, days).await?;
-    Ok(Json(plans))
+    let pagination = PaginationParams {
+        cursor: query.cursor,
+        limit: query.limit,
+    };
+    let result = service::get_upcoming(&state.pool, days, &pagination).await?;
+    Ok(Json(result))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct OverdueQuery {
+    pub cursor: Option<String>,
+    pub limit: Option<i32>,
 }
 
 pub async fn get_overdue(
     State(state): State<AppState>,
-) -> Result<Json<Vec<MaintenancePlan>>, AppError> {
-    let plans = service::get_overdue(&state.pool).await?;
-    Ok(Json(plans))
+    Query(query): Query<OverdueQuery>,
+) -> Result<Json<PaginatedResponse<MaintenancePlan>>, AppError> {
+    let pagination = PaginationParams {
+        cursor: query.cursor,
+        limit: query.limit,
+    };
+    let result = service::get_overdue(&state.pool, &pagination).await?;
+    Ok(Json(result))
 }
 
 pub async fn create(

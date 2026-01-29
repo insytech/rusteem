@@ -114,28 +114,76 @@ pub async fn delete(pool: &PgPool, id: Uuid) -> Result<bool, sqlx::Error> {
 pub async fn find_upcoming(
     pool: &PgPool,
     days_ahead: i32,
-) -> Result<Vec<MaintenancePlan>, sqlx::Error> {
-    sqlx::query_as::<_, MaintenancePlan>(
+    cursor_next_due: Option<DateTime<Utc>>,
+    cursor_id: Option<Uuid>,
+    limit: i32,
+) -> Result<(Vec<MaintenancePlan>, i64), sqlx::Error> {
+    let rows = sqlx::query_as::<_, MaintenancePlan>(
         "SELECT * FROM maintenance_plans
          WHERE is_enabled = true
            AND next_due_at IS NOT NULL
            AND next_due_at <= now() + ($1 || ' days')::interval
            AND next_due_at >= now()
-         ORDER BY next_due_at",
+           AND (
+               $2::timestamptz IS NULL
+               OR (next_due_at, id) > ($2, $3::uuid)
+           )
+         ORDER BY next_due_at ASC, id ASC
+         LIMIT $4",
     )
     .bind(days_ahead)
+    .bind(cursor_next_due)
+    .bind(cursor_id)
+    .bind(i64::from(limit))
     .fetch_all(pool)
-    .await
+    .await?;
+
+    let total: (i64,) = sqlx::query_as(
+        "SELECT COUNT(*) FROM maintenance_plans
+         WHERE is_enabled = true
+           AND next_due_at IS NOT NULL
+           AND next_due_at <= now() + ($1 || ' days')::interval
+           AND next_due_at >= now()",
+    )
+    .bind(days_ahead)
+    .fetch_one(pool)
+    .await?;
+
+    Ok((rows, total.0))
 }
 
-pub async fn find_overdue(pool: &PgPool) -> Result<Vec<MaintenancePlan>, sqlx::Error> {
-    sqlx::query_as::<_, MaintenancePlan>(
+pub async fn find_overdue(
+    pool: &PgPool,
+    cursor_next_due: Option<DateTime<Utc>>,
+    cursor_id: Option<Uuid>,
+    limit: i32,
+) -> Result<(Vec<MaintenancePlan>, i64), sqlx::Error> {
+    let rows = sqlx::query_as::<_, MaintenancePlan>(
         "SELECT * FROM maintenance_plans
          WHERE is_enabled = true
            AND next_due_at IS NOT NULL
            AND next_due_at < now()
-         ORDER BY next_due_at",
+           AND (
+               $1::timestamptz IS NULL
+               OR (next_due_at, id) > ($1, $2::uuid)
+           )
+         ORDER BY next_due_at ASC, id ASC
+         LIMIT $3",
     )
+    .bind(cursor_next_due)
+    .bind(cursor_id)
+    .bind(i64::from(limit))
     .fetch_all(pool)
-    .await
+    .await?;
+
+    let total: (i64,) = sqlx::query_as(
+        "SELECT COUNT(*) FROM maintenance_plans
+         WHERE is_enabled = true
+           AND next_due_at IS NOT NULL
+           AND next_due_at < now()",
+    )
+    .fetch_one(pool)
+    .await?;
+
+    Ok((rows, total.0))
 }

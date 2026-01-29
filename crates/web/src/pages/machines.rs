@@ -1,5 +1,6 @@
 use leptos::*;
 use shared::dto::machines::CreateMachineRequest;
+use shared::dto::pagination::PaginatedResponse;
 use shared::Machine;
 
 use crate::api;
@@ -7,13 +8,50 @@ use crate::api;
 #[component]
 pub fn MachinesPage() -> impl IntoView {
     let (refresh_counter, set_refresh) = create_signal(0u32);
+    let (machines, set_machines) = create_signal(Vec::<Machine>::new());
+    let (next_cursor, set_next_cursor) = create_signal(Option::<String>::None);
+    let (total, set_total) = create_signal(0i64);
+    let (loading_more, set_loading_more) = create_signal(false);
 
-    let machines = create_resource(
+    let initial_load = create_resource(
         move || refresh_counter.get(),
-        |_| async move { api::get::<Vec<Machine>>("/machines?active=true").await },
+        move |_| async move {
+            let result = api::get::<PaginatedResponse<Machine>>("/machines?active=true").await;
+            if let Ok(ref page) = result {
+                set_machines.set(page.items.clone());
+                set_next_cursor.set(page.next_cursor.clone());
+                set_total.set(page.total);
+            }
+            result
+        },
     );
 
-    let trigger_refresh = move || set_refresh.update(|c| *c += 1);
+    let trigger_refresh = move || {
+        set_machines.set(vec![]);
+        set_next_cursor.set(None);
+        set_refresh.update(|c| *c += 1);
+    };
+
+    let load_more = move |_| {
+        if let Some(cursor) = next_cursor.get() {
+            set_loading_more.set(true);
+            spawn_local(async move {
+                let url = format!("/machines?active=true&cursor={cursor}");
+                match api::get::<PaginatedResponse<Machine>>(&url).await {
+                    Ok(page) => {
+                        set_machines.update(|list| list.extend(page.items));
+                        set_next_cursor.set(page.next_cursor);
+                        set_total.set(page.total);
+                    }
+                    Err(e) => {
+                        web_sys::window()
+                            .and_then(|w| w.alert_with_message(&format!("Load more failed: {e}")).ok());
+                    }
+                }
+                set_loading_more.set(false);
+            });
+        }
+    };
 
     let (show_form, set_show_form) = create_signal(false);
 
@@ -34,9 +72,26 @@ pub fn MachinesPage() -> impl IntoView {
             </Show>
 
             <Suspense fallback=move || view! { <p class="loading">"Loading machines..."</p> }>
-                {move || machines.get().map(|result| match result {
-                    Ok(list) => view! {
-                        <MachineTable machines=list on_deleted=Callback::new(move |_: ()| trigger_refresh())/>
+                {move || initial_load.get().map(|result| match result {
+                    Ok(_) => view! {
+                        <MachineTable
+                            machines=machines.get()
+                            on_deleted=Callback::new(move |_: ()| trigger_refresh())
+                        />
+                        <Show when=move || next_cursor.get().is_some()>
+                            <div style="text-align: center; margin: 1rem 0;">
+                                <button
+                                    class="btn btn-primary"
+                                    on:click=load_more
+                                    disabled=move || loading_more.get()
+                                >
+                                    {move || if loading_more.get() { "Loading..." } else { "Load More" }}
+                                </button>
+                                <p style="margin-top: 0.5rem; color: var(--color-muted);">
+                                    {move || format!("Showing {} of {}", machines.get().len(), total.get())}
+                                </p>
+                            </div>
+                        </Show>
                     }.into_view(),
                     Err(e) => view! {
                         <div class="error-message">{format!("Failed to load machines: {e}")}</div>
