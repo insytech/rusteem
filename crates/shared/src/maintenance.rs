@@ -2,7 +2,8 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-#[derive(Debug, Serialize, Deserialize, Clone, sqlx::FromRow)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[cfg_attr(feature = "backend", derive(sqlx::FromRow))]
 pub struct MaintenancePlan {
     pub id: Uuid,
     pub machine_id: Option<Uuid>,
@@ -14,9 +15,10 @@ pub struct MaintenancePlan {
     pub is_enabled: bool,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, sqlx::Type)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[cfg_attr(feature = "backend", derive(sqlx::Type))]
 #[serde(rename_all = "lowercase")]
-#[sqlx(type_name = "text", rename_all = "lowercase")]
+#[cfg_attr(feature = "backend", sqlx(type_name = "text", rename_all = "lowercase"))]
 pub enum FrequencyUnit {
     Hours,
     Days,

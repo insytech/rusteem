@@ -9,7 +9,8 @@ pub struct SubmitDecisionRequest {
     pub comments: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, sqlx::FromRow)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[cfg_attr(feature = "backend", derive(sqlx::FromRow))]
 pub struct PendingApproval {
     pub approval_id: Uuid,
     pub document_id: Uuid,

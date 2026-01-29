@@ -13,8 +13,10 @@ help: ## Show this help
 setup: deps db-start db-reset ## Full setup: install deps, start DB, apply migrations
 	@echo "Done. Run 'make dev' to start the API."
 
-deps: ## Install all dependencies (Rust toolchain, Supabase CLI)
+deps: ## Install all dependencies (Rust toolchain, Trunk, Supabase CLI)
 	rustup update stable
+	rustup target add wasm32-unknown-unknown
+	cargo install trunk --locked
 	cargo fetch
 	npm install -g supabase
 
@@ -57,16 +59,19 @@ dev: api ## Alias for 'make api'
 api: ## Run the API server (debug mode)
 	cargo run --bin api
 
-web: ## Run the frontend (debug mode)
-	cargo run --bin web
+web: ## Run the frontend (Leptos CSR via Trunk)
+	cd crates/web && trunk serve
 
 # ── Build ────────────────────────────────────────────────────────────────
 
-build: ## Build all crates (debug)
-	cargo build --workspace
+build: ## Build API + shared (debug)
+	cargo build
 
-release: ## Build all crates (release, optimized)
-	cargo build --workspace --release
+build-web: ## Build frontend WASM (release)
+	cd crates/web && trunk build --release
+
+release: ## Build API + shared (release, optimized)
+	cargo build --release
 
 # ── Quality ──────────────────────────────────────────────────────────────
 

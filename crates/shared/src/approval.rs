@@ -2,14 +2,16 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-#[derive(Debug, Serialize, Deserialize, Clone, sqlx::FromRow)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[cfg_attr(feature = "backend", derive(sqlx::FromRow))]
 pub struct ApprovalWorkflow {
     pub id: Uuid,
     pub name: String,
     pub description: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, sqlx::FromRow)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[cfg_attr(feature = "backend", derive(sqlx::FromRow))]
 pub struct ApprovalStep {
     pub id: Uuid,
     pub workflow_id: Uuid,
@@ -18,7 +20,8 @@ pub struct ApprovalStep {
     pub is_required: bool,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, sqlx::FromRow)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[cfg_attr(feature = "backend", derive(sqlx::FromRow))]
 pub struct Approval {
     pub id: Uuid,
     pub document_id: Uuid,
@@ -31,16 +34,18 @@ pub struct Approval {
     pub created_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, sqlx::Type)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[cfg_attr(feature = "backend", derive(sqlx::Type))]
 #[serde(rename_all = "lowercase")]
-#[sqlx(type_name = "text", rename_all = "lowercase")]
+#[cfg_attr(feature = "backend", sqlx(type_name = "text", rename_all = "lowercase"))]
 pub enum ApprovalDecision {
     Pending,
     Approved,
     Rejected,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, sqlx::FromRow)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[cfg_attr(feature = "backend", derive(sqlx::FromRow))]
 pub struct ApprovalHistory {
     pub id: Uuid,
     pub document_id: Uuid,

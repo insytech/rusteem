@@ -5,6 +5,10 @@ members = [
     "crates/web",
     "crates/shared",
 ]
+default-members = [
+    "crates/api",
+    "crates/shared",
+]
 
 [workspace.package]
 version = "0.1.0"
