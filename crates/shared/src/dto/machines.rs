@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct CreateMachineRequest {
     pub name: String,
     pub asset_number: Option<String>,
@@ -9,7 +9,7 @@ pub struct CreateMachineRequest {
     pub area: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct UpdateMachineRequest {
     pub name: Option<String>,
     pub asset_number: Option<String>,
