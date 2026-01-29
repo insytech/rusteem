@@ -3,16 +3,19 @@ mod errors;
 mod extractors;
 mod handlers;
 mod middleware;
+mod repositories;
+mod services;
 mod state;
 
-use axum::{routing::get, Router};
+use axum::routing::{delete, get, post, put};
+use axum::Router;
 use sqlx::postgres::PgPoolOptions;
 use std::net::SocketAddr;
 use tower_http::trace::TraceLayer;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use crate::config::AppConfig;
-use crate::handlers::health::health_check;
+use crate::handlers::{health, machines};
 use crate::middleware::cors::build_cors_layer;
 use crate::state::AppState;
 
@@ -40,7 +43,14 @@ async fn main() {
     let state = AppState { pool, config };
 
     let app = Router::new()
-        .route("/health", get(health_check))
+        .route("/health", get(health::health_check))
+        .route("/api/machines", get(machines::list).post(machines::create))
+        .route(
+            "/api/machines/:id",
+            get(machines::get_by_id)
+                .put(machines::update)
+                .delete(machines::delete),
+        )
         .layer(cors)
         .layer(TraceLayer::new_for_http())
         .with_state(state);
