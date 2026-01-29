@@ -1,0 +1,13 @@
+[build]
+target = "index.html"
+dist = "dist"
+
+[watch]
+watch = ["src", "index.html", "style"]
+
+[serve]
+address = "127.0.0.1"
+port = 1420
+
+[[proxy]]
+backend = "http://127.0.0.1:3000/api"
