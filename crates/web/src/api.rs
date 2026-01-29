@@ -9,10 +9,12 @@ pub fn get_token() -> Option<String> {
     LocalStorage::get::<String>(TOKEN_KEY).ok()
 }
 
+#[allow(dead_code)]
 pub fn set_token(token: &str) {
     let _ = LocalStorage::set(TOKEN_KEY, token.to_string());
 }
 
+#[allow(dead_code)]
 pub fn clear_token() {
     LocalStorage::delete(TOKEN_KEY);
 }
@@ -98,6 +100,7 @@ pub async fn post<T: DeserializeOwned, B: Serialize>(
     })
 }
 
+#[allow(dead_code)]
 pub async fn put<T: DeserializeOwned, B: Serialize>(
     path: &str,
     body: &B,
