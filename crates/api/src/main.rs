@@ -7,7 +7,7 @@ mod repositories;
 mod services;
 mod state;
 
-use axum::routing::{get, patch};
+use axum::routing::{get, patch, post};
 use axum::Router;
 use sqlx::postgres::PgPoolOptions;
 use std::net::SocketAddr;
@@ -15,7 +15,7 @@ use tower_http::trace::TraceLayer;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use crate::config::AppConfig;
-use crate::handlers::{documents, health, machines};
+use crate::handlers::{approvals, documents, health, machines};
 use crate::middleware::cors::build_cors_layer;
 use crate::state::AppState;
 
@@ -64,6 +64,26 @@ async fn main() {
         .route(
             "/api/documents/:id/status",
             patch(documents::update_status),
+        )
+        .route(
+            "/api/documents/:id/approvals",
+            get(approvals::get_document_approvals),
+        )
+        .route(
+            "/api/documents/:id/history",
+            get(approvals::get_document_history),
+        )
+        .route(
+            "/api/documents/:id/workflows/:workflow_id/initiate",
+            post(approvals::initiate_workflow),
+        )
+        .route(
+            "/api/approvals/pending",
+            get(approvals::get_pending),
+        )
+        .route(
+            "/api/approvals/:id/decide",
+            post(approvals::submit_decision),
         )
         .layer(cors)
         .layer(TraceLayer::new_for_http())
