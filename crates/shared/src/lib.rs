@@ -1,21 +1,14 @@
+pub mod dto;
+pub mod machine;
+
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct Machine {
-    pub id: Uuid,
-    pub name: String,
-    pub asset_number: Option<String>,
-    pub line: Option<String>,
-    pub station: Option<String>,
-    pub area: Option<String>,
-    pub active: bool,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
-}
+// Re-export Machine from its module
+pub use machine::Machine;
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, sqlx::FromRow)]
 pub struct DocumentType {
     pub id: Uuid,
     pub name: String,
@@ -23,7 +16,7 @@ pub struct DocumentType {
     pub required_for_release: bool,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, sqlx::FromRow)]
 pub struct Document {
     pub id: Uuid,
     pub machine_id: Option<Uuid>,
@@ -37,8 +30,9 @@ pub struct Document {
     pub updated_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, sqlx::Type)]
 #[serde(rename_all = "lowercase")]
+#[sqlx(type_name = "text", rename_all = "lowercase")]
 pub enum DocumentStatus {
     Draft,
     Pending,
@@ -47,7 +41,7 @@ pub enum DocumentStatus {
     Archived,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, sqlx::FromRow)]
 pub struct ApprovalStep {
     pub id: Uuid,
     pub workflow_id: Uuid,
@@ -56,7 +50,7 @@ pub struct ApprovalStep {
     pub is_required: bool,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, sqlx::FromRow)]
 pub struct Approval {
     pub id: Uuid,
     pub document_id: Uuid,
@@ -68,8 +62,9 @@ pub struct Approval {
     pub created_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, sqlx::Type)]
 #[serde(rename_all = "lowercase")]
+#[sqlx(type_name = "text", rename_all = "lowercase")]
 pub enum ApprovalDecision {
     Pending,
     Approved,
