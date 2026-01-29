@@ -22,6 +22,7 @@ pub struct ApprovalStep {
 pub struct Approval {
     pub id: Uuid,
     pub document_id: Uuid,
+    pub workflow_id: Option<Uuid>,
     pub step_id: Uuid,
     pub approver_id: Option<Uuid>,
     pub decision: ApprovalDecision,
