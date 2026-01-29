@@ -1,3 +1,4 @@
+pub mod document;
 pub mod dto;
 pub mod machine;
 
@@ -5,41 +6,8 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-// Re-export Machine from its module
+pub use document::{Document, DocumentStatus, DocumentType};
 pub use machine::Machine;
-
-#[derive(Debug, Serialize, Deserialize, Clone, sqlx::FromRow)]
-pub struct DocumentType {
-    pub id: Uuid,
-    pub name: String,
-    pub description: Option<String>,
-    pub required_for_release: bool,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone, sqlx::FromRow)]
-pub struct Document {
-    pub id: Uuid,
-    pub machine_id: Option<Uuid>,
-    pub document_type_id: Uuid,
-    pub title: String,
-    pub storage_path: String,
-    pub revision: i32,
-    pub status: DocumentStatus,
-    pub uploader_id: Uuid,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, sqlx::Type)]
-#[serde(rename_all = "lowercase")]
-#[sqlx(type_name = "text", rename_all = "lowercase")]
-pub enum DocumentStatus {
-    Draft,
-    Pending,
-    Approved,
-    Rejected,
-    Archived,
-}
 
 #[derive(Debug, Serialize, Deserialize, Clone, sqlx::FromRow)]
 pub struct ApprovalStep {
