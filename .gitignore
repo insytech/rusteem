@@ -23,6 +23,9 @@ Thumbs.db
 # Logs
 *.log
 
+# Supabase
+supabase/.temp/
+
 # Frontend (Leptos / Tailwind) artifacts
 /crates/web/dist/
 /crates/web/pkg/
