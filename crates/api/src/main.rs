@@ -7,7 +7,7 @@ mod repositories;
 mod services;
 mod state;
 
-use axum::routing::{get, patch, post};
+use axum::routing::{get, patch, post, put};
 use axum::Router;
 use sqlx::postgres::PgPoolOptions;
 use std::net::SocketAddr;
@@ -15,7 +15,7 @@ use tower_http::trace::TraceLayer;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use crate::config::AppConfig;
-use crate::handlers::{approvals, documents, health, machines};
+use crate::handlers::{approvals, documents, health, machines, maintenance};
 use crate::middleware::cors::build_cors_layer;
 use crate::state::AppState;
 
@@ -84,6 +84,31 @@ async fn main() {
         .route(
             "/api/approvals/:id/decide",
             post(approvals::submit_decision),
+        )
+        .route(
+            "/api/machines/:id/maintenance",
+            get(maintenance::get_by_machine),
+        )
+        .route(
+            "/api/maintenance/upcoming",
+            get(maintenance::get_upcoming),
+        )
+        .route(
+            "/api/maintenance/overdue",
+            get(maintenance::get_overdue),
+        )
+        .route(
+            "/api/maintenance",
+            post(maintenance::create),
+        )
+        .route(
+            "/api/maintenance/:id",
+            put(maintenance::update)
+                .delete(maintenance::delete),
+        )
+        .route(
+            "/api/maintenance/:id/complete",
+            post(maintenance::complete),
         )
         .layer(cors)
         .layer(TraceLayer::new_for_http())
