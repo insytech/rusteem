@@ -7,7 +7,7 @@ mod repositories;
 mod services;
 mod state;
 
-use axum::routing::{delete, get, post, put};
+use axum::routing::{get, patch};
 use axum::Router;
 use sqlx::postgres::PgPoolOptions;
 use std::net::SocketAddr;
@@ -15,7 +15,7 @@ use tower_http::trace::TraceLayer;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use crate::config::AppConfig;
-use crate::handlers::{health, machines};
+use crate::handlers::{documents, health, machines};
 use crate::middleware::cors::build_cors_layer;
 use crate::state::AppState;
 
@@ -50,6 +50,20 @@ async fn main() {
             get(machines::get_by_id)
                 .put(machines::update)
                 .delete(machines::delete),
+        )
+        .route(
+            "/api/documents",
+            get(documents::list).post(documents::create),
+        )
+        .route(
+            "/api/documents/:id",
+            get(documents::get_by_id)
+                .put(documents::update_metadata)
+                .delete(documents::delete),
+        )
+        .route(
+            "/api/documents/:id/status",
+            patch(documents::update_status),
         )
         .layer(cors)
         .layer(TraceLayer::new_for_http())
