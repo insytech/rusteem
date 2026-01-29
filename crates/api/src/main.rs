@@ -1,5 +1,7 @@
 mod config;
 mod errors;
+mod extractors;
+mod middleware;
 mod state;
 
 use axum::{routing::get, Router};
