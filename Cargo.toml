@@ -1,0 +1,13 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/api",
+    "crates/web",
+    "crates/shared",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["Insytech Engineering"]
+license = "LicenseRef-Proprietary"
