@@ -9,7 +9,7 @@ pub struct SubmitDecisionRequest {
     pub comments: Option<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, sqlx::FromRow)]
 pub struct PendingApproval {
     pub approval_id: Uuid,
     pub document_id: Uuid,
