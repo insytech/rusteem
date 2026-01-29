@@ -11,7 +11,7 @@ use axum::routing::{get, patch, post, put};
 use axum::Router;
 use tower_http::trace::TraceLayer;
 
-use crate::handlers::{approvals, documents, health, machines, maintenance};
+use crate::handlers::{approvals, dashboard, documents, health, machines, maintenance};
 use crate::middleware::cors::build_cors_layer;
 use crate::state::AppState;
 
@@ -20,6 +20,7 @@ pub fn build_router(state: AppState) -> Router {
 
     Router::new()
         .route("/health", get(health::health_check))
+        .route("/api/dashboard/summary", get(dashboard::summary))
         .route("/api/machines", get(machines::list).post(machines::create))
         .route(
             "/api/machines/:id",

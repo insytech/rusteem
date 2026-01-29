@@ -140,6 +140,11 @@ pub async fn put<T: DeserializeOwned, B: Serialize>(
     })
 }
 
+pub async fn fetch_dashboard_summary() -> Result<shared::dto::dashboard::DashboardSummary, ApiError>
+{
+    get::<shared::dto::dashboard::DashboardSummary>("/dashboard/summary").await
+}
+
 pub async fn delete_req(path: &str) -> Result<(), ApiError> {
     let url = format!("{API_BASE}{path}");
     let mut req = Request::delete(&url);
