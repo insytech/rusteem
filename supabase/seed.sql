@@ -19,6 +19,45 @@ INSERT INTO approval_steps (workflow_id, step_order, role_name, is_required) VAL
     ('00000000-0000-0000-0000-000000000001', 2, 'Quality Auditor', true),
     ('00000000-0000-0000-0000-000000000001', 3, 'Maintenance Manager', false);
 
+-- Seed: machine types
+INSERT INTO machine_types (name, description) VALUES
+    ('Press', 'Hydraulic and mechanical presses'),
+    ('Robot', 'Industrial robotic arms and systems'),
+    ('Conveyor', 'Belt and roller conveyor systems'),
+    ('CNC', 'Computer numerical control machines'),
+    ('Welding Station', 'Automated and manual welding equipment'),
+    ('Assembly Cell', 'Semi-automated assembly workstations'),
+    ('Inspection', 'Quality inspection and measurement equipment'),
+    ('Packaging', 'End-of-line packaging machines')
+ON CONFLICT (name) DO NOTHING;
+
+-- Seed: manufacturers
+INSERT INTO manufacturers (name, website) VALUES
+    ('FANUC', 'https://www.fanuc.com'),
+    ('ABB', 'https://www.abb.com'),
+    ('KUKA', 'https://www.kuka.com'),
+    ('Siemens', 'https://www.siemens.com'),
+    ('Bosch Rexroth', 'https://www.boschrexroth.com'),
+    ('Schuler', 'https://www.schulergroup.com')
+ON CONFLICT (name) DO NOTHING;
+
+-- Seed: locations
+INSERT INTO locations (area, line) VALUES
+    ('Body Shop', 'Line 1'),
+    ('Body Shop', 'Line 2'),
+    ('Paint Shop', 'Line 1'),
+    ('Assembly', 'Line 1'),
+    ('Assembly', 'Line 2'),
+    ('Quality', 'Inspection Bay')
+ON CONFLICT (area, line) DO NOTHING;
+
+-- Seed: projects
+INSERT INTO projects (name, code, description) VALUES
+    ('2026 Model Refresh', 'MR-2026', 'Annual model year tooling and equipment updates'),
+    ('New Paint Line', 'NPL-01', 'Installation of new paint shop line 2'),
+    ('Automation Phase 3', 'AP3', 'Third phase of assembly automation rollout')
+ON CONFLICT (code) DO NOTHING;
+
 -- Seed: create storage bucket for documents
 INSERT INTO storage.buckets (id, name, public)
 VALUES ('documents', 'documents', false)
