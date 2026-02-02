@@ -1,4 +1,4 @@
-use shared::dto::machines::{CreateMachineRequest, MachineDetail, MachineFilters, UpdateMachineRequest};
+use shared::dto::machines::{CreateMachineRequest, MachineDetail, MachineFilters, MachineStats, UpdateMachineRequest};
 use shared::dto::pagination::PaginatedResponse;
 use shared::Machine;
 use sqlx::PgPool;
@@ -102,6 +102,10 @@ pub async fn soft_delete(pool: &PgPool, id: Uuid) -> Result<(), AppError> {
         )));
     }
     Ok(())
+}
+
+pub async fn get_stats(pool: &PgPool) -> Result<MachineStats, AppError> {
+    repo::get_stats(pool).await.map_err(AppError::from)
 }
 
 pub async fn duplicate(pool: &PgPool, source_id: Uuid) -> Result<Machine, AppError> {

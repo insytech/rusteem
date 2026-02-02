@@ -21,4 +21,5 @@ pub struct Machine {
     pub location_id: Option<Uuid>,
     pub project_id: Option<Uuid>,
     pub responsible: Option<String>,
+    pub responsible_id: Option<Uuid>,
 }

@@ -4,7 +4,7 @@ use axum::Json;
 use serde::Serialize;
 use uuid::Uuid;
 
-use shared::dto::machines::{CreateMachineRequest, MachineDetail, MachineFilters, UpdateMachineRequest};
+use shared::dto::machines::{CreateMachineRequest, MachineDetail, MachineFilters, MachineStats, UpdateMachineRequest};
 use shared::dto::pagination::PaginatedResponse;
 use shared::Machine;
 
@@ -55,6 +55,13 @@ pub async fn delete(
 ) -> Result<StatusCode, AppError> {
     service::soft_delete(&state.pool, id).await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+pub async fn get_stats(
+    State(state): State<AppState>,
+) -> Result<Json<MachineStats>, AppError> {
+    let stats = service::get_stats(&state.pool).await?;
+    Ok(Json(stats))
 }
 
 pub async fn duplicate(

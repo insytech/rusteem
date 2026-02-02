@@ -8,6 +8,7 @@ pub mod maintenance;
 pub mod manufacturer;
 pub mod project;
 pub mod purchase_rfq;
+pub mod team_member;
 
 pub use approval::{Approval, ApprovalDecision, ApprovalHistory, ApprovalStep, ApprovalWorkflow};
 pub use document::{Document, DocumentStatus, DocumentType};
@@ -18,3 +19,4 @@ pub use maintenance::{FrequencyUnit, MaintenancePlan};
 pub use manufacturer::Manufacturer;
 pub use project::Project;
 pub use purchase_rfq::PurchaseRfq;
+pub use team_member::TeamMember;

@@ -58,6 +58,15 @@ INSERT INTO projects (name, code, description) VALUES
     ('Automation Phase 3', 'AP3', 'Third phase of assembly automation rollout')
 ON CONFLICT (code) DO NOTHING;
 
+-- Seed: team members
+INSERT INTO team_members (name, email, role, department) VALUES
+    ('Carlos Mendez', 'carlos.mendez@example.com', 'Engineer', 'Manufacturing'),
+    ('Anna Schmidt', 'anna.schmidt@example.com', 'NPI Lead', 'New Programs'),
+    ('James Park', 'james.park@example.com', 'Maintenance', 'Facilities'),
+    ('Sofia Reyes', 'sofia.reyes@example.com', 'Quality Auditor', 'Quality'),
+    ('Liam Chen', 'liam.chen@example.com', 'Engineering Lead', 'Engineering')
+ON CONFLICT (email) DO NOTHING;
+
 -- Seed: create storage bucket for documents
 INSERT INTO storage.buckets (id, name, public)
 VALUES ('documents', 'documents', false)

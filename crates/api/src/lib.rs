@@ -13,7 +13,7 @@ use tower_http::trace::TraceLayer;
 
 use crate::handlers::{
     approvals, dashboard, documents, health, locations, machine_types, machines, maintenance,
-    manufacturers, projects, purchase_rfqs,
+    manufacturers, projects, purchase_rfqs, team_members,
 };
 use crate::middleware::cors::build_cors_layer;
 use crate::state::AppState;
@@ -24,7 +24,17 @@ pub fn build_router(state: AppState) -> Router {
     Router::new()
         .route("/health", get(health::health_check))
         .route("/api/dashboard/summary", get(dashboard::summary))
+        // Team Members
+        .route(
+            "/api/team-members",
+            get(team_members::list).post(team_members::create),
+        )
+        .route(
+            "/api/team-members/:id",
+            get(team_members::get_by_id).put(team_members::update),
+        )
         // Machines
+        .route("/api/machines/stats", get(machines::get_stats))
         .route("/api/machines", get(machines::list).post(machines::create))
         .route(
             "/api/machines/:id",

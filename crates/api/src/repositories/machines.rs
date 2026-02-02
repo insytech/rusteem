@@ -1,4 +1,4 @@
-use shared::dto::machines::{CreateMachineRequest, MachineDetail, MachineFilters, UpdateMachineRequest};
+use shared::dto::machines::{CreateMachineRequest, GroupCount, MachineDetail, MachineFilters, MachineStats, UpdateMachineRequest};
 use shared::Machine;
 use sqlx::PgPool;
 use uuid::Uuid;
@@ -19,12 +19,15 @@ pub async fn find_all_with_details(
             mfr.name AS manufacturer_name,
             loc.area AS location_area,
             loc.line AS location_line,
-            p.name AS project_name
+            p.name AS project_name,
+            tm.name AS responsible_name,
+            tm.email AS responsible_email
          FROM machines m
          LEFT JOIN machine_types mt ON m.machine_type_id = mt.id
          LEFT JOIN manufacturers mfr ON m.manufacturer_id = mfr.id
          LEFT JOIN locations loc ON m.location_id = loc.id
          LEFT JOIN projects p ON m.project_id = p.id
+         LEFT JOIN team_members tm ON m.responsible_id = tm.id
          WHERE ($1::bool IS NULL OR m.active = $1)
            AND ($2::text IS NULL OR m.area = $2)
            AND ($3::text IS NULL OR m.line = $3)
@@ -32,7 +35,7 @@ pub async fn find_all_with_details(
            AND ($5::uuid IS NULL OR m.machine_type_id = $5)
            AND ($6::uuid IS NULL OR m.manufacturer_id = $6)
            AND ($7::uuid IS NULL OR m.location_id = $7)
-           AND ($8::text IS NULL OR m.responsible = $8)
+           AND ($8::uuid IS NULL OR m.responsible_id = $8)
            AND ($9::text IS NULL OR m.name ILIKE $9)
            AND (
                $10::text IS NULL
@@ -48,7 +51,7 @@ pub async fn find_all_with_details(
     .bind(filters.machine_type_id)
     .bind(filters.manufacturer_id)
     .bind(filters.location_id)
-    .bind(&filters.responsible)
+    .bind(filters.responsible_id)
     .bind(&search_pattern)
     .bind(cursor_name)
     .bind(cursor_id)
@@ -65,7 +68,7 @@ pub async fn find_all_with_details(
            AND ($5::uuid IS NULL OR m.machine_type_id = $5)
            AND ($6::uuid IS NULL OR m.manufacturer_id = $6)
            AND ($7::uuid IS NULL OR m.location_id = $7)
-           AND ($8::text IS NULL OR m.responsible = $8)
+           AND ($8::uuid IS NULL OR m.responsible_id = $8)
            AND ($9::text IS NULL OR m.name ILIKE $9)",
     )
     .bind(filters.active)
@@ -75,7 +78,7 @@ pub async fn find_all_with_details(
     .bind(filters.machine_type_id)
     .bind(filters.manufacturer_id)
     .bind(filters.location_id)
-    .bind(&filters.responsible)
+    .bind(filters.responsible_id)
     .bind(&search_pattern)
     .fetch_one(pool)
     .await?;
@@ -101,12 +104,15 @@ pub async fn find_detail_by_id(
             mfr.name AS manufacturer_name,
             loc.area AS location_area,
             loc.line AS location_line,
-            p.name AS project_name
+            p.name AS project_name,
+            tm.name AS responsible_name,
+            tm.email AS responsible_email
          FROM machines m
          LEFT JOIN machine_types mt ON m.machine_type_id = mt.id
          LEFT JOIN manufacturers mfr ON m.manufacturer_id = mfr.id
          LEFT JOIN locations loc ON m.location_id = loc.id
          LEFT JOIN projects p ON m.project_id = p.id
+         LEFT JOIN team_members tm ON m.responsible_id = tm.id
          WHERE m.id = $1",
     )
     .bind(id)
@@ -116,8 +122,8 @@ pub async fn find_detail_by_id(
 
 pub async fn create(pool: &PgPool, data: &CreateMachineRequest) -> Result<Machine, sqlx::Error> {
     sqlx::query_as::<_, Machine>(
-        "INSERT INTO machines (name, asset_number, line, station, area, model, serial_number, machine_type_id, manufacturer_id, location_id, project_id, responsible)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+        "INSERT INTO machines (name, asset_number, line, station, area, model, serial_number, machine_type_id, manufacturer_id, location_id, project_id, responsible, responsible_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
          RETURNING *",
     )
     .bind(&data.name)
@@ -132,6 +138,7 @@ pub async fn create(pool: &PgPool, data: &CreateMachineRequest) -> Result<Machin
     .bind(data.location_id)
     .bind(data.project_id)
     .bind(&data.responsible)
+    .bind(data.responsible_id)
     .fetch_one(pool)
     .await
 }
@@ -155,7 +162,8 @@ pub async fn update(
             manufacturer_id = COALESCE($11, manufacturer_id),
             location_id = COALESCE($12, location_id),
             project_id = COALESCE($13, project_id),
-            responsible = COALESCE($14, responsible)
+            responsible = COALESCE($14, responsible),
+            responsible_id = COALESCE($15, responsible_id)
          WHERE id = $1
          RETURNING *",
     )
@@ -173,6 +181,7 @@ pub async fn update(
     .bind(data.location_id)
     .bind(data.project_id)
     .bind(&data.responsible)
+    .bind(data.responsible_id)
     .fetch_optional(pool)
     .await
 }
@@ -202,8 +211,8 @@ pub async fn duplicate(
     new_name: &str,
 ) -> Result<Option<Machine>, sqlx::Error> {
     sqlx::query_as::<_, Machine>(
-        "INSERT INTO machines (name, line, station, area, model, serial_number, machine_type_id, manufacturer_id, location_id, project_id, responsible)
-         SELECT $2, line, station, area, model, serial_number, machine_type_id, manufacturer_id, location_id, project_id, responsible
+        "INSERT INTO machines (name, line, station, area, model, serial_number, machine_type_id, manufacturer_id, location_id, project_id, responsible, responsible_id)
+         SELECT $2, line, station, area, model, serial_number, machine_type_id, manufacturer_id, location_id, project_id, responsible, responsible_id
          FROM machines WHERE id = $1
          RETURNING *",
     )
@@ -211,4 +220,49 @@ pub async fn duplicate(
     .bind(new_name)
     .fetch_optional(pool)
     .await
+}
+
+pub async fn get_stats(pool: &PgPool) -> Result<MachineStats, sqlx::Error> {
+    let total: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM machines")
+        .fetch_one(pool)
+        .await?;
+
+    let active: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM machines WHERE active = true")
+        .fetch_one(pool)
+        .await?;
+
+    let by_type = sqlx::query_as::<_, (String, i64)>(
+        "SELECT COALESCE(mt.name, 'Unassigned') AS name, COUNT(*) AS count
+         FROM machines m
+         LEFT JOIN machine_types mt ON m.machine_type_id = mt.id
+         WHERE m.active = true
+         GROUP BY mt.name
+         ORDER BY count DESC",
+    )
+    .fetch_all(pool)
+    .await?
+    .into_iter()
+    .map(|(name, count)| GroupCount { name, count })
+    .collect();
+
+    let by_area = sqlx::query_as::<_, (String, i64)>(
+        "SELECT COALESCE(loc.area, COALESCE(m.area, 'Unassigned')) AS name, COUNT(*) AS count
+         FROM machines m
+         LEFT JOIN locations loc ON m.location_id = loc.id
+         WHERE m.active = true
+         GROUP BY COALESCE(loc.area, COALESCE(m.area, 'Unassigned'))
+         ORDER BY count DESC",
+    )
+    .fetch_all(pool)
+    .await?
+    .into_iter()
+    .map(|(name, count)| GroupCount { name, count })
+    .collect();
+
+    Ok(MachineStats {
+        total: total.0,
+        active: active.0,
+        by_type,
+        by_area,
+    })
 }

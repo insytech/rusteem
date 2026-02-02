@@ -9,3 +9,4 @@ pub mod manufacturers;
 pub mod projects;
 pub mod purchase_rfqs;
 pub mod storage;
+pub mod team_members;

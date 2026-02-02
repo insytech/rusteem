@@ -16,6 +16,7 @@ pub struct CreateMachineRequest {
     pub location_id: Option<Uuid>,
     pub project_id: Option<Uuid>,
     pub responsible: Option<String>,
+    pub responsible_id: Option<Uuid>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -33,6 +34,7 @@ pub struct UpdateMachineRequest {
     pub location_id: Option<Uuid>,
     pub project_id: Option<Uuid>,
     pub responsible: Option<String>,
+    pub responsible_id: Option<Uuid>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -46,7 +48,7 @@ pub struct MachineFilters {
     pub machine_type_id: Option<Uuid>,
     pub manufacturer_id: Option<Uuid>,
     pub location_id: Option<Uuid>,
-    pub responsible: Option<String>,
+    pub responsible_id: Option<Uuid>,
     pub search: Option<String>,
 }
 
@@ -69,9 +71,26 @@ pub struct MachineDetail {
     pub location_id: Option<Uuid>,
     pub project_id: Option<Uuid>,
     pub responsible: Option<String>,
+    pub responsible_id: Option<Uuid>,
     pub machine_type_name: Option<String>,
     pub manufacturer_name: Option<String>,
     pub location_area: Option<String>,
     pub location_line: Option<String>,
     pub project_name: Option<String>,
+    pub responsible_name: Option<String>,
+    pub responsible_email: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct MachineStats {
+    pub total: i64,
+    pub active: i64,
+    pub by_type: Vec<GroupCount>,
+    pub by_area: Vec<GroupCount>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct GroupCount {
+    pub name: String,
+    pub count: i64,
 }
