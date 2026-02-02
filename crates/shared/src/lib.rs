@@ -1,10 +1,20 @@
 pub mod approval;
 pub mod document;
 pub mod dto;
+pub mod location;
 pub mod machine;
+pub mod machine_type;
 pub mod maintenance;
+pub mod manufacturer;
+pub mod project;
+pub mod purchase_rfq;
 
 pub use approval::{Approval, ApprovalDecision, ApprovalHistory, ApprovalStep, ApprovalWorkflow};
 pub use document::{Document, DocumentStatus, DocumentType};
+pub use location::Location;
 pub use machine::Machine;
+pub use machine_type::MachineType;
 pub use maintenance::{FrequencyUnit, MaintenancePlan};
+pub use manufacturer::Manufacturer;
+pub use project::Project;
+pub use purchase_rfq::PurchaseRfq;
