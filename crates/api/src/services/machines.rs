@@ -1,4 +1,4 @@
-use shared::dto::machines::{CreateMachineRequest, MachineFilters, UpdateMachineRequest};
+use shared::dto::machines::{CreateMachineRequest, MachineDetail, MachineFilters, UpdateMachineRequest};
 use shared::dto::pagination::PaginatedResponse;
 use shared::Machine;
 use sqlx::PgPool;
@@ -11,7 +11,7 @@ use crate::repositories::pagination::{clamp_limit, decode_cursor, encode_cursor}
 pub async fn list(
     pool: &PgPool,
     filters: &MachineFilters,
-) -> Result<PaginatedResponse<Machine>, AppError> {
+) -> Result<PaginatedResponse<MachineDetail>, AppError> {
     let limit = clamp_limit(filters.limit);
     let (cursor_name, cursor_id) = match &filters.cursor {
         Some(c) => {
@@ -22,7 +22,8 @@ pub async fn list(
     };
 
     let (mut rows, total) =
-        repo::find_all(pool, filters, cursor_name.as_deref(), cursor_id, limit + 1).await?;
+        repo::find_all_with_details(pool, filters, cursor_name.as_deref(), cursor_id, limit + 1)
+            .await?;
 
     let has_more = rows.len() > limit as usize;
     if has_more {
@@ -43,8 +44,8 @@ pub async fn list(
     })
 }
 
-pub async fn get_by_id(pool: &PgPool, id: Uuid) -> Result<Machine, AppError> {
-    repo::find_by_id(pool, id)
+pub async fn get_by_id(pool: &PgPool, id: Uuid) -> Result<MachineDetail, AppError> {
+    repo::find_detail_by_id(pool, id)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("Machine {id} not found")))
 }
@@ -54,7 +55,6 @@ pub async fn create(pool: &PgPool, data: CreateMachineRequest) -> Result<Machine
         return Err(AppError::Validation("Machine name cannot be empty".to_string()));
     }
 
-    // Validate asset_number uniqueness if provided
     if let Some(ref asset_number) = data.asset_number {
         if let Some(existing) = repo::find_by_asset_number(pool, asset_number).await? {
             return Err(AppError::Validation(format!(
@@ -78,7 +78,6 @@ pub async fn update(
         }
     }
 
-    // Validate asset_number uniqueness if changing it
     if let Some(ref asset_number) = data.asset_number {
         if let Some(existing) = repo::find_by_asset_number(pool, asset_number).await? {
             if existing.id != id {
@@ -103,4 +102,15 @@ pub async fn soft_delete(pool: &PgPool, id: Uuid) -> Result<(), AppError> {
         )));
     }
     Ok(())
+}
+
+pub async fn duplicate(pool: &PgPool, source_id: Uuid) -> Result<Machine, AppError> {
+    let source = repo::find_by_id(pool, source_id)
+        .await?
+        .ok_or_else(|| AppError::NotFound(format!("Machine {source_id} not found")))?;
+
+    let new_name = format!("{} (Copy)", source.name);
+    repo::duplicate(pool, source_id, &new_name)
+        .await?
+        .ok_or_else(|| AppError::Internal("Failed to duplicate machine".to_string()))
 }
