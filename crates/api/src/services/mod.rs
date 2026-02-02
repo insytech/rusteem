@@ -1,6 +1,11 @@
 pub mod approvals;
 pub mod dashboard;
 pub mod documents;
+pub mod locations;
+pub mod machine_types;
 pub mod machines;
 pub mod maintenance;
+pub mod manufacturers;
+pub mod projects;
+pub mod purchase_rfqs;
 pub mod storage;
