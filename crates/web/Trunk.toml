@@ -11,3 +11,6 @@ port = 1420
 
 [[proxy]]
 backend = "http://127.0.0.1:3000/api"
+
+[[proxy]]
+backend = "http://127.0.0.1:54321/auth"

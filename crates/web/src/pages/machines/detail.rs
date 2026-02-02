@@ -6,6 +6,7 @@ use shared::PurchaseRfq;
 
 use crate::api;
 use crate::components::confirm_modal::ConfirmModal;
+use crate::components::toast::use_toast;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct PipelineStage {
@@ -45,6 +46,7 @@ fn stage_css(status: &str) -> &str {
 
 #[component]
 pub fn MachineDetailPage() -> impl IntoView {
+    let toast = use_toast();
     let params = use_params_map();
     let id = move || {
         params.with(|p| {
@@ -101,6 +103,8 @@ pub fn MachineDetailPage() -> impl IntoView {
                         let edit_href = format!("/machines/{}/edit", m.id);
                         let nav_dup = nav.clone();
                         let nav_del = nav.clone();
+                        let toast_dup = toast;
+                        let toast_del = toast;
 
                         view! {
                             // Header
@@ -120,14 +124,14 @@ pub fn MachineDetailPage() -> impl IntoView {
                                     <button class="btn btn-outline"
                                         on:click=move |_| {
                                             let nav_dup = nav_dup.clone();
+                                            let toast = toast_dup;
                                             spawn_local(async move {
                                                 match api::post::<shared::Machine, ()>(&format!("/machines/{machine_id}/duplicate"), &()).await {
                                                     Ok(dup) => {
                                                         nav_dup(&format!("/machines/{}", dup.id), Default::default());
                                                     }
                                                     Err(e) => {
-                                                        web_sys::window()
-                                                            .and_then(|w| w.alert_with_message(&format!("Duplicate failed: {e}")).ok());
+                                                        toast.error(&format!("Duplicate failed: {e}"));
                                                     }
                                                 }
                                             });
@@ -150,7 +154,13 @@ pub fn MachineDetailPage() -> impl IntoView {
                                     <div class="section-title">"Classification"</div>
                                     <InfoRow label="Type" value=m.machine_type_name.clone().unwrap_or_else(|| "-".to_string()) />
                                     <InfoRow label="Manufacturer" value=m.manufacturer_name.clone().unwrap_or_else(|| "-".to_string()) />
-                                    <InfoRow label="Responsible" value=m.responsible.clone().unwrap_or_else(|| "-".to_string()) />
+                                    <InfoRow label="Responsible" value={
+                                        match (&m.responsible_name, &m.responsible_email) {
+                                            (Some(name), Some(email)) => format!("{name} ({email})"),
+                                            (Some(name), None) => name.clone(),
+                                            _ => m.responsible.clone().unwrap_or_else(|| "-".to_string()),
+                                        }
+                                    } />
                                     <InfoRow label="Project" value=m.project_name.clone().unwrap_or_else(|| "-".to_string()) />
                                 </div>
                             </div>
@@ -177,9 +187,9 @@ pub fn MachineDetailPage() -> impl IntoView {
                                         let css = stage_css(&s.status).to_string();
                                         let label = stage_label(&s.stage).to_string();
                                         let status_char = match s.status.as_str() {
-                                            "completed" => "✓",
-                                            "in_progress" => "●",
-                                            _ => "○",
+                                            "completed" => "\u{2713}",
+                                            "in_progress" => "\u{25cf}",
+                                            _ => "\u{25cb}",
                                         };
                                         view! {
                                             <div class=css>
@@ -261,12 +271,13 @@ pub fn MachineDetailPage() -> impl IntoView {
                                     confirm_label="Delete".to_string()
                                     on_confirm=Callback::new({
                                         let nav_del = nav_del.clone();
+                                        let toast = toast_del;
                                         move |_: ()| {
                                             let nav_del = nav_del.clone();
+                                            let toast = toast.clone();
                                             spawn_local(async move {
                                                 if let Err(e) = api::delete_req(&format!("/machines/{machine_id}")).await {
-                                                    web_sys::window()
-                                                        .and_then(|w| w.alert_with_message(&format!("Delete failed: {e}")).ok());
+                                                    toast.error(&format!("Delete failed: {e}"));
                                                 } else {
                                                     nav_del("/machines", Default::default());
                                                 }

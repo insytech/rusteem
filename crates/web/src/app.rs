@@ -2,31 +2,53 @@ use leptos::*;
 use leptos_meta::*;
 use leptos_router::*;
 
+use crate::auth;
 use crate::components::layout::Layout;
+use crate::components::toast::{provide_toast_context, ToastContainer};
 use crate::pages::{
     approvals::ApprovalsPage, documents::DocumentsPage, home::HomePage,
-    machines::{MachineDetailPage, MachinesPage}, maintenance::MaintenancePage,
+    login::LoginPage, machines::{MachineDetailPage, MachinesPage},
+    maintenance::MaintenancePage, settings::SettingsPage,
 };
 
 #[component]
 pub fn App() -> impl IntoView {
     provide_meta_context();
+    provide_toast_context();
 
     view! {
         <Title text="RustEEM"/>
+        <ToastContainer/>
         <Router>
-            <Layout>
-                <Routes>
-                    <Route path="/" view=HomePage/>
-                    <Route path="/machines" view=MachinesPage/>
-                    <Route path="/machines/:id" view=MachineDetailPage/>
-                    <Route path="/machines/:id/edit" view=MachineEditPage/>
-                    <Route path="/documents" view=DocumentsPage/>
-                    <Route path="/approvals" view=ApprovalsPage/>
-                    <Route path="/maintenance" view=MaintenancePage/>
-                </Routes>
-            </Layout>
+            <Routes>
+                <Route path="/login" view=LoginPage/>
+                <Route path="/" view=AuthGuard>
+                    <Route path="" view=HomePage/>
+                    <Route path="machines" view=MachinesPage/>
+                    <Route path="machines/:id" view=MachineDetailPage/>
+                    <Route path="machines/:id/edit" view=MachineEditPage/>
+                    <Route path="documents" view=DocumentsPage/>
+                    <Route path="approvals" view=ApprovalsPage/>
+                    <Route path="maintenance" view=MaintenancePage/>
+                    <Route path="settings" view=SettingsPage/>
+                </Route>
+            </Routes>
         </Router>
+    }
+}
+
+#[component]
+fn AuthGuard() -> impl IntoView {
+    let navigate = use_navigate();
+
+    if !auth::is_authenticated() {
+        navigate("/login", Default::default());
+    }
+
+    view! {
+        <Layout>
+            <Outlet/>
+        </Layout>
     }
 }
 

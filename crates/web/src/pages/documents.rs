@@ -3,9 +3,11 @@ use shared::dto::pagination::PaginatedResponse;
 use shared::Document;
 
 use crate::api;
+use crate::components::toast::use_toast;
 
 #[component]
 pub fn DocumentsPage() -> impl IntoView {
+    let toast = use_toast();
     let (refresh_counter, set_refresh) = create_signal(0u32);
     let (documents, set_documents) = create_signal(Vec::<Document>::new());
     let (next_cursor, set_next_cursor) = create_signal(Option::<String>::None);
@@ -34,6 +36,7 @@ pub fn DocumentsPage() -> impl IntoView {
     let load_more = move |_| {
         if let Some(cursor) = next_cursor.get() {
             set_loading_more.set(true);
+            let toast = toast;
             spawn_local(async move {
                 let url = format!("/documents?cursor={cursor}");
                 match api::get::<PaginatedResponse<Document>>(&url).await {
@@ -43,8 +46,7 @@ pub fn DocumentsPage() -> impl IntoView {
                         set_total.set(page.total);
                     }
                     Err(e) => {
-                        web_sys::window()
-                            .and_then(|w| w.alert_with_message(&format!("Load more failed: {e}")).ok());
+                        toast.error(&format!("Load more failed: {e}"));
                     }
                 }
                 set_loading_more.set(false);
@@ -91,6 +93,8 @@ fn DocumentTable(
     documents: Vec<Document>,
     on_deleted: Callback<()>,
 ) -> impl IntoView {
+    let toast = use_toast();
+
     if documents.is_empty() {
         return view! {
             <div class="card">
@@ -120,6 +124,7 @@ fn DocumentTable(
                         let status = format!("{:?}", d.status).to_lowercase();
                         let badge_class = format!("badge badge-{status}");
                         let updated = d.updated_at.format("%Y-%m-%d %H:%M").to_string();
+                        let toast_del = toast.clone();
                         view! {
                             <tr>
                                 <td>{title}</td>
@@ -129,10 +134,10 @@ fn DocumentTable(
                                 <td>
                                     <button class="btn btn-danger btn-sm"
                                         on:click=move |_| {
+                                            let toast = toast_del.clone();
                                             spawn_local(async move {
                                                 if let Err(e) = api::delete_req(&format!("/documents/{id}")).await {
-                                                    web_sys::window()
-                                                        .and_then(|w| w.alert_with_message(&format!("Delete failed: {e}")).ok());
+                                                    toast.error(&format!("Delete failed: {e}"));
                                                 } else {
                                                     on_deleted.call(());
                                                 }

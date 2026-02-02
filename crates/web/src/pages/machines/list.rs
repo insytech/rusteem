@@ -1,13 +1,15 @@
 use leptos::*;
-use shared::dto::machines::MachineDetail;
+use shared::dto::machines::{MachineDetail, MachineStats};
 use shared::dto::pagination::PaginatedResponse;
-use shared::{Location, MachineType, Manufacturer};
+use shared::{Location, MachineType, Manufacturer, TeamMember};
 
 use crate::api;
 use crate::components::confirm_modal::ConfirmModal;
+use crate::components::toast::use_toast;
 
 #[component]
 pub fn MachinesPage() -> impl IntoView {
+    let toast = use_toast();
     let (refresh_counter, set_refresh) = create_signal(0u32);
     let (machines, set_machines) = create_signal(Vec::<MachineDetail>::new());
     let (next_cursor, set_next_cursor) = create_signal(Option::<String>::None);
@@ -19,6 +21,7 @@ pub fn MachinesPage() -> impl IntoView {
     let (filter_type, set_filter_type) = create_signal(String::new());
     let (filter_manufacturer, set_filter_manufacturer) = create_signal(String::new());
     let (filter_location, set_filter_location) = create_signal(String::new());
+    let (filter_responsible, set_filter_responsible) = create_signal(String::new());
 
     // Reference data for dropdowns
     let machine_types = create_resource(|| (), |_| async {
@@ -30,6 +33,15 @@ pub fn MachinesPage() -> impl IntoView {
     let locations = create_resource(|| (), |_| async {
         api::get::<Vec<Location>>("/locations").await.unwrap_or_default()
     });
+    let team_members = create_resource(|| (), |_| async {
+        api::get::<Vec<TeamMember>>("/team-members").await.unwrap_or_default()
+    });
+
+    // Server-side stats
+    let stats = create_resource(
+        move || refresh_counter.get(),
+        |_| async { api::get::<MachineStats>("/machines/stats").await.ok() },
+    );
 
     let build_query = move || -> String {
         let mut params = vec!["active=true".to_string()];
@@ -49,11 +61,15 @@ pub fn MachinesPage() -> impl IntoView {
         if !loc.is_empty() {
             params.push(format!("location_id={loc}"));
         }
+        let resp = filter_responsible.get();
+        if !resp.is_empty() {
+            params.push(format!("responsible_id={resp}"));
+        }
         format!("/machines?{}", params.join("&"))
     };
 
     let initial_load = create_resource(
-        move || (refresh_counter.get(), search.get(), filter_type.get(), filter_manufacturer.get(), filter_location.get()),
+        move || (refresh_counter.get(), search.get(), filter_type.get(), filter_manufacturer.get(), filter_location.get(), filter_responsible.get()),
         move |_| {
             let url = build_query();
             async move {
@@ -86,8 +102,7 @@ pub fn MachinesPage() -> impl IntoView {
                         set_total.set(page.total);
                     }
                     Err(e) => {
-                        web_sys::window()
-                            .and_then(|w| w.alert_with_message(&format!("Load more failed: {e}")).ok());
+                        toast.error(&format!("Load more failed: {e}"));
                     }
                 }
                 set_loading_more.set(false);
@@ -104,8 +119,7 @@ pub fn MachinesPage() -> impl IntoView {
         if let Some((id, _)) = delete_target.get() {
             spawn_local(async move {
                 if let Err(e) = api::delete_req(&format!("/machines/{id}")).await {
-                    web_sys::window()
-                        .and_then(|w| w.alert_with_message(&format!("Delete failed: {e}")).ok());
+                    toast.error(&format!("Delete failed: {e}"));
                 } else {
                     trigger_refresh();
                 }
@@ -123,40 +137,29 @@ pub fn MachinesPage() -> impl IntoView {
                 </button>
             </div>
 
-            // Stat cards
+            // Stat cards (server-side)
             <div class="stats-grid">
-                <div class="stat-card">
-                    <div class="stat-value">{move || total.get()}</div>
-                    <div class="stat-label">"Total Machines"</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-value">{move || machines.get().iter().filter(|m| m.active).count()}</div>
-                    <div class="stat-label">"Showing Active"</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-value">{move || {
-                        let list = machines.get();
-                        let mut areas: Vec<&str> = list.iter()
-                            .filter_map(|m| m.location_area.as_deref().or(m.area.as_deref()))
-                            .collect();
-                        areas.sort();
-                        areas.dedup();
-                        areas.len()
-                    }}</div>
-                    <div class="stat-label">"Areas"</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-value">{move || {
-                        let list = machines.get();
-                        let mut types: Vec<&str> = list.iter()
-                            .filter_map(|m| m.machine_type_name.as_deref())
-                            .collect();
-                        types.sort();
-                        types.dedup();
-                        types.len()
-                    }}</div>
-                    <div class="stat-label">"Types"</div>
-                </div>
+                {move || stats.get().map(|maybe_s: Option<MachineStats>| {
+                    let s = maybe_s.unwrap_or(MachineStats { total: 0, active: 0, by_type: vec![], by_area: vec![] });
+                    view! {
+                        <div class="stat-card">
+                            <div class="stat-value">{s.total}</div>
+                            <div class="stat-label">"Total Machines"</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value">{s.active}</div>
+                            <div class="stat-label">"Active"</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value">{s.by_area.len()}</div>
+                            <div class="stat-label">"Areas"</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value">{s.by_type.len()}</div>
+                            <div class="stat-label">"Types"</div>
+                        </div>
+                    }
+                })}
             </div>
 
             // Filter bar
@@ -174,11 +177,15 @@ pub fn MachinesPage() -> impl IntoView {
                 >
                     <option value="">"All Types"</option>
                     {move || machine_types.get().map(|types| {
-                        types.into_iter().map(|t| {
-                            let id = t.id.to_string();
-                            let name = t.name;
-                            view! { <option value=id>{name}</option> }
-                        }).collect_view()
+                        if types.is_empty() {
+                            view! { <option value="" disabled>"No types yet"</option> }.into_view()
+                        } else {
+                            types.into_iter().map(|t| {
+                                let id = t.id.to_string();
+                                let name = t.name;
+                                view! { <option value=id>{name}</option> }
+                            }).collect_view()
+                        }
                     })}
                 </select>
                 <select
@@ -187,11 +194,15 @@ pub fn MachinesPage() -> impl IntoView {
                 >
                     <option value="">"All Manufacturers"</option>
                     {move || manufacturers.get().map(|mfrs| {
-                        mfrs.into_iter().map(|m| {
-                            let id = m.id.to_string();
-                            let name = m.name;
-                            view! { <option value=id>{name}</option> }
-                        }).collect_view()
+                        if mfrs.is_empty() {
+                            view! { <option value="" disabled>"No manufacturers yet"</option> }.into_view()
+                        } else {
+                            mfrs.into_iter().map(|m| {
+                                let id = m.id.to_string();
+                                let name = m.name;
+                                view! { <option value=id>{name}</option> }
+                            }).collect_view()
+                        }
                     })}
                 </select>
                 <select
@@ -200,11 +211,32 @@ pub fn MachinesPage() -> impl IntoView {
                 >
                     <option value="">"All Locations"</option>
                     {move || locations.get().map(|locs| {
-                        locs.into_iter().map(|l| {
-                            let id = l.id.to_string();
-                            let label = format!("{} — {}", l.area, l.line);
-                            view! { <option value=id>{label}</option> }
-                        }).collect_view()
+                        if locs.is_empty() {
+                            view! { <option value="" disabled>"No locations yet"</option> }.into_view()
+                        } else {
+                            locs.into_iter().map(|l| {
+                                let id = l.id.to_string();
+                                let label = format!("{} — {}", l.area, l.line);
+                                view! { <option value=id>{label}</option> }
+                            }).collect_view()
+                        }
+                    })}
+                </select>
+                <select
+                    class="filter-select"
+                    on:change=move |ev| set_filter_responsible.set(event_target_value(&ev))
+                >
+                    <option value="">"All Responsible"</option>
+                    {move || team_members.get().map(|members| {
+                        if members.is_empty() {
+                            view! { <option value="" disabled>"No team members yet"</option> }.into_view()
+                        } else {
+                            members.into_iter().map(|t| {
+                                let id = t.id.to_string();
+                                let name = t.name;
+                                view! { <option value=id>{name}</option> }
+                            }).collect_view()
+                        }
                     })}
                 </select>
             </div>
@@ -274,6 +306,8 @@ fn MachineTable(
     on_delete: Callback<(uuid::Uuid, String)>,
     on_refresh: Callback<()>,
 ) -> impl IntoView {
+    let toast = use_toast();
+
     if machines.is_empty() {
         return view! {
             <div class="card">
@@ -290,9 +324,7 @@ fn MachineTable(
                     <tr>
                         <th>"Name"</th>
                         <th>"Asset #"</th>
-                        <th>"Model"</th>
                         <th>"Type"</th>
-                        <th>"Manufacturer"</th>
                         <th>"Location"</th>
                         <th>"Responsible"</th>
                         <th>"Status"</th>
@@ -305,24 +337,22 @@ fn MachineTable(
                         let name = m.name.clone();
                         let name_for_delete = m.name.clone();
                         let asset = m.asset_number.clone().unwrap_or_else(|| "-".to_string());
-                        let model = m.model.clone().unwrap_or_else(|| "-".to_string());
                         let type_name = m.machine_type_name.clone().unwrap_or_else(|| "-".to_string());
-                        let mfr_name = m.manufacturer_name.clone().unwrap_or_else(|| "-".to_string());
                         let location = match (&m.location_area, &m.location_line) {
                             (Some(area), Some(line)) => format!("{area} — {line}"),
                             _ => m.area.clone().unwrap_or_else(|| "-".to_string()),
                         };
-                        let responsible = m.responsible.clone().unwrap_or_else(|| "-".to_string());
+                        let responsible = m.responsible_name.clone()
+                            .unwrap_or_else(|| m.responsible.clone().unwrap_or_else(|| "-".to_string()));
                         let active = m.active;
                         let detail_href = format!("/machines/{id}");
                         let edit_href = format!("/machines/{id}/edit");
+                        let toast_dup = toast;
                         view! {
                             <tr>
                                 <td><a href=detail_href.clone() style="color: var(--color-text); font-weight: 500;">{name}</a></td>
                                 <td class="font-mono">{asset}</td>
-                                <td>{model}</td>
                                 <td>{type_name}</td>
-                                <td>{mfr_name}</td>
                                 <td class="machine-location">{location}</td>
                                 <td>{responsible}</td>
                                 <td>
@@ -332,22 +362,41 @@ fn MachineTable(
                                 </td>
                                 <td>
                                     <div class="actions-cell">
-                                        <a href=detail_href class="btn btn-outline btn-icon" title="View">"V"</a>
-                                        <a href=edit_href class="btn btn-outline btn-icon" title="Edit">"E"</a>
+                                        // View icon (eye)
+                                        <a href=detail_href class="btn btn-outline btn-icon" title="View">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;">
+                                                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                                                <circle cx="12" cy="12" r="3"/>
+                                            </svg>
+                                        </a>
+                                        // Edit icon (pencil)
+                                        <a href=edit_href class="btn btn-outline btn-icon" title="Edit">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;">
+                                                <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>
+                                                <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                                            </svg>
+                                        </a>
+                                        // Duplicate icon (copy)
                                         <button class="btn btn-outline btn-icon" title="Duplicate"
                                             on:click=move |_| {
                                                 let on_refresh = on_refresh.clone();
+                                                let toast = toast_dup;
                                                 spawn_local(async move {
                                                     match api::post::<shared::Machine, ()>(&format!("/machines/{id}/duplicate"), &()).await {
                                                         Ok(_) => on_refresh.call(()),
                                                         Err(e) => {
-                                                            web_sys::window()
-                                                                .and_then(|w| w.alert_with_message(&format!("Duplicate failed: {e}")).ok());
+                                                            toast.error(&format!("Duplicate failed: {e}"));
                                                         }
                                                     }
                                                 });
                                             }
-                                        >"D"</button>
+                                        >
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;">
+                                                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                                                <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
+                                            </svg>
+                                        </button>
+                                        // Delete icon (trash)
                                         <button class="btn btn-danger btn-icon" title="Delete"
                                             on:click={
                                                 let name_for_delete = name_for_delete.clone();
@@ -355,7 +404,12 @@ fn MachineTable(
                                                     on_delete.call((id, name_for_delete.clone()));
                                                 }
                                             }
-                                        >"X"</button>
+                                        >
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;">
+                                                <polyline points="3 6 5 6 21 6"/>
+                                                <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
+                                            </svg>
+                                        </button>
                                     </div>
                                 </td>
                             </tr>

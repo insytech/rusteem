@@ -1,9 +1,13 @@
 use leptos::*;
+use std::collections::HashMap;
+
 use shared::dto::machines::{CreateMachineRequest, MachineDetail, UpdateMachineRequest};
 use shared::dto::purchase_rfqs::CreatePurchaseRfqRequest;
-use shared::{Location, Machine, MachineType, Manufacturer, Project, PurchaseRfq};
+use shared::{Location, Machine, MachineType, Manufacturer, Project, PurchaseRfq, TeamMember};
 
 use crate::api;
+use crate::components::quick_add_modal::{FieldDef, QuickAddModal};
+use crate::components::toast::use_toast;
 
 #[component]
 pub fn MachineForm(
@@ -12,6 +16,7 @@ pub fn MachineForm(
 ) -> impl IntoView {
     let is_edit = machine.is_some();
     let machine_id = machine.as_ref().map(|m| m.id);
+    let toast = use_toast();
 
     let (name, set_name) = create_signal(machine.as_ref().map(|m| m.name.clone()).unwrap_or_default());
     let (asset_number, set_asset_number) = create_signal(machine.as_ref().and_then(|m| m.asset_number.clone()).unwrap_or_default());
@@ -21,22 +26,36 @@ pub fn MachineForm(
     let (manufacturer_id, set_manufacturer_id) = create_signal(machine.as_ref().and_then(|m| m.manufacturer_id).map(|id| id.to_string()).unwrap_or_default());
     let (location_id, set_location_id) = create_signal(machine.as_ref().and_then(|m| m.location_id).map(|id| id.to_string()).unwrap_or_default());
     let (project_id, set_project_id) = create_signal(machine.as_ref().and_then(|m| m.project_id).map(|id| id.to_string()).unwrap_or_default());
-    let (responsible, set_responsible) = create_signal(machine.as_ref().and_then(|m| m.responsible.clone()).unwrap_or_default());
+    let (responsible_id, set_responsible_id) = create_signal(machine.as_ref().and_then(|m| m.responsible_id).map(|id| id.to_string()).unwrap_or_default());
     let (error, set_error) = create_signal(Option::<String>::None);
     let (submitting, set_submitting) = create_signal(false);
 
+    // Quick-add modal states
+    let (quick_add_type, set_quick_add_type) = create_signal(false);
+    let (quick_add_mfr, set_quick_add_mfr) = create_signal(false);
+    let (quick_add_loc, set_quick_add_loc) = create_signal(false);
+    let (quick_add_proj, set_quick_add_proj) = create_signal(false);
+    let (quick_add_team, set_quick_add_team) = create_signal(false);
+
+    // Refresh counter for reference data
+    let (ref_refresh, set_ref_refresh) = create_signal(0u32);
+    let trigger_ref_refresh = move || set_ref_refresh.update(|c| *c += 1);
+
     // Reference data
-    let machine_types = create_resource(|| (), |_| async {
+    let machine_types = create_resource(move || ref_refresh.get(), |_| async {
         api::get::<Vec<MachineType>>("/machine-types").await.unwrap_or_default()
     });
-    let manufacturers = create_resource(|| (), |_| async {
+    let manufacturers = create_resource(move || ref_refresh.get(), |_| async {
         api::get::<Vec<Manufacturer>>("/manufacturers").await.unwrap_or_default()
     });
-    let locations = create_resource(|| (), |_| async {
+    let locations = create_resource(move || ref_refresh.get(), |_| async {
         api::get::<Vec<Location>>("/locations").await.unwrap_or_default()
     });
-    let projects = create_resource(|| (), |_| async {
+    let projects = create_resource(move || ref_refresh.get(), |_| async {
         api::get::<Vec<Project>>("/projects").await.unwrap_or_default()
+    });
+    let team_members = create_resource(move || ref_refresh.get(), |_| async {
+        api::get::<Vec<TeamMember>>("/team-members").await.unwrap_or_default()
     });
 
     // Purchase RFQs (edit mode only)
@@ -67,7 +86,7 @@ pub fn MachineForm(
         let mfr_val = parse_uuid(&manufacturer_id.get());
         let loc_val = parse_uuid(&location_id.get());
         let proj_val = parse_uuid(&project_id.get());
-        let resp_val = Some(responsible.get()).filter(|s| !s.is_empty());
+        let resp_id_val = parse_uuid(&responsible_id.get());
 
         if is_edit {
             let id = machine_id.unwrap();
@@ -84,7 +103,8 @@ pub fn MachineForm(
                 manufacturer_id: mfr_val,
                 location_id: loc_val,
                 project_id: proj_val,
-                responsible: resp_val,
+                responsible: None,
+                responsible_id: resp_id_val,
             };
             spawn_local(async move {
                 match api::put::<Machine, _>(&format!("/machines/{id}"), &req).await {
@@ -106,7 +126,8 @@ pub fn MachineForm(
                 manufacturer_id: mfr_val,
                 location_id: loc_val,
                 project_id: proj_val,
-                responsible: resp_val,
+                responsible: None,
+                responsible_id: resp_id_val,
             };
             spawn_local(async move {
                 match api::post::<Machine, _>("/machines", &req).await {
@@ -121,6 +142,13 @@ pub fn MachineForm(
     // Add RFQ handler
     let (rfq_number, set_rfq_number) = create_signal(String::new());
     let (rfq_po, set_rfq_po) = create_signal(String::new());
+
+    let toast_rfq = toast;
+    let toast_type = toast;
+    let toast_mfr = toast;
+    let toast_loc = toast;
+    let toast_proj = toast;
+    let toast_team = toast;
 
     view! {
         <div class="card" style="margin-bottom: 1rem;">
@@ -167,76 +195,108 @@ pub fn MachineForm(
                 // Section 2: Classification
                 <div class="section-title" style="margin-top: 1rem;">"Classification"</div>
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                    // Machine Type with quick-add
                     <div class="form-group">
                         <label>"Machine Type"</label>
-                        <select
-                            prop:value=machine_type_id
-                            on:change=move |ev| set_machine_type_id.set(event_target_value(&ev))
-                        >
-                            <option value="">"— Select —"</option>
-                            {move || machine_types.get().map(|types| {
-                                types.into_iter().map(|t| {
-                                    let id = t.id.to_string();
-                                    let name = t.name;
-                                    let selected = machine_type_id.get() == id;
-                                    view! { <option value=id selected=selected>{name}</option> }
-                                }).collect_view()
-                            })}
-                        </select>
+                        <div class="field-with-add">
+                            <select
+                                prop:value=machine_type_id
+                                on:change=move |ev| set_machine_type_id.set(event_target_value(&ev))
+                            >
+                                <option value="">"— Select —"</option>
+                                {move || machine_types.get().map(|types| {
+                                    if types.is_empty() {
+                                        view! { <option value="" disabled>"No types yet"</option> }.into_view()
+                                    } else {
+                                        types.into_iter().map(|t| {
+                                            let id = t.id.to_string();
+                                            let name = t.name;
+                                            let selected = machine_type_id.get() == id;
+                                            view! { <option value=id selected=selected>{name}</option> }
+                                        }).collect_view()
+                                    }
+                                })}
+                            </select>
+                            <button type="button" class="btn btn-outline btn-quick-add" title="Add Machine Type" on:click=move |_| set_quick_add_type.set(true)>"+"</button>
+                        </div>
                     </div>
+                    // Manufacturer with quick-add
                     <div class="form-group">
                         <label>"Manufacturer"</label>
-                        <select
-                            prop:value=manufacturer_id
-                            on:change=move |ev| set_manufacturer_id.set(event_target_value(&ev))
-                        >
-                            <option value="">"— Select —"</option>
-                            {move || manufacturers.get().map(|mfrs| {
-                                mfrs.into_iter().map(|m| {
-                                    let id = m.id.to_string();
-                                    let name = m.name;
-                                    let selected = manufacturer_id.get() == id;
-                                    view! { <option value=id selected=selected>{name}</option> }
-                                }).collect_view()
-                            })}
-                        </select>
+                        <div class="field-with-add">
+                            <select
+                                prop:value=manufacturer_id
+                                on:change=move |ev| set_manufacturer_id.set(event_target_value(&ev))
+                            >
+                                <option value="">"— Select —"</option>
+                                {move || manufacturers.get().map(|mfrs| {
+                                    if mfrs.is_empty() {
+                                        view! { <option value="" disabled>"No manufacturers yet"</option> }.into_view()
+                                    } else {
+                                        mfrs.into_iter().map(|m| {
+                                            let id = m.id.to_string();
+                                            let name = m.name;
+                                            let selected = manufacturer_id.get() == id;
+                                            view! { <option value=id selected=selected>{name}</option> }
+                                        }).collect_view()
+                                    }
+                                })}
+                            </select>
+                            <button type="button" class="btn btn-outline btn-quick-add" title="Add Manufacturer" on:click=move |_| set_quick_add_mfr.set(true)>"+"</button>
+                        </div>
                     </div>
+                    // Location with quick-add
                     <div class="form-group">
                         <label>"Location"</label>
-                        <select
-                            prop:value=location_id
-                            on:change=move |ev| set_location_id.set(event_target_value(&ev))
-                        >
-                            <option value="">"— Select —"</option>
-                            {move || locations.get().map(|locs| {
-                                locs.into_iter().map(|l| {
-                                    let id = l.id.to_string();
-                                    let label = format!("{} — {}", l.area, l.line);
-                                    let selected = location_id.get() == id;
-                                    view! { <option value=id selected=selected>{label}</option> }
-                                }).collect_view()
-                            })}
-                        </select>
+                        <div class="field-with-add">
+                            <select
+                                prop:value=location_id
+                                on:change=move |ev| set_location_id.set(event_target_value(&ev))
+                            >
+                                <option value="">"— Select —"</option>
+                                {move || locations.get().map(|locs| {
+                                    if locs.is_empty() {
+                                        view! { <option value="" disabled>"No locations yet"</option> }.into_view()
+                                    } else {
+                                        locs.into_iter().map(|l| {
+                                            let id = l.id.to_string();
+                                            let label = format!("{} — {}", l.area, l.line);
+                                            let selected = location_id.get() == id;
+                                            view! { <option value=id selected=selected>{label}</option> }
+                                        }).collect_view()
+                                    }
+                                })}
+                            </select>
+                            <button type="button" class="btn btn-outline btn-quick-add" title="Add Location" on:click=move |_| set_quick_add_loc.set(true)>"+"</button>
+                        </div>
                     </div>
+                    // Project with quick-add
                     <div class="form-group">
                         <label>"Project"</label>
-                        <select
-                            prop:value=project_id
-                            on:change=move |ev| set_project_id.set(event_target_value(&ev))
-                        >
-                            <option value="">"— Select —"</option>
-                            {move || projects.get().map(|projs| {
-                                projs.into_iter().map(|p| {
-                                    let id = p.id.to_string();
-                                    let label = match p.code {
-                                        Some(ref code) => format!("{} ({})", p.name, code),
-                                        None => p.name.clone(),
-                                    };
-                                    let selected = project_id.get() == id;
-                                    view! { <option value=id selected=selected>{label}</option> }
-                                }).collect_view()
-                            })}
-                        </select>
+                        <div class="field-with-add">
+                            <select
+                                prop:value=project_id
+                                on:change=move |ev| set_project_id.set(event_target_value(&ev))
+                            >
+                                <option value="">"— Select —"</option>
+                                {move || projects.get().map(|projs| {
+                                    if projs.is_empty() {
+                                        view! { <option value="" disabled>"No projects yet"</option> }.into_view()
+                                    } else {
+                                        projs.into_iter().map(|p| {
+                                            let id = p.id.to_string();
+                                            let label = match p.code {
+                                                Some(ref code) => format!("{} ({})", p.name, code),
+                                                None => p.name.clone(),
+                                            };
+                                            let selected = project_id.get() == id;
+                                            view! { <option value=id selected=selected>{label}</option> }
+                                        }).collect_view()
+                                    }
+                                })}
+                            </select>
+                            <button type="button" class="btn btn-outline btn-quick-add" title="Add Project" on:click=move |_| set_quick_add_proj.set(true)>"+"</button>
+                        </div>
                     </div>
                 </div>
 
@@ -244,10 +304,27 @@ pub fn MachineForm(
                 <div class="section-title" style="margin-top: 1rem;">"Responsibility"</div>
                 <div class="form-group">
                     <label>"Responsible Person"</label>
-                    <input type="text"
-                        prop:value=responsible
-                        on:input=move |ev| set_responsible.set(event_target_value(&ev))
-                    />
+                    <div class="field-with-add">
+                        <select
+                            prop:value=responsible_id
+                            on:change=move |ev| set_responsible_id.set(event_target_value(&ev))
+                        >
+                            <option value="">"— Select —"</option>
+                            {move || team_members.get().map(|members| {
+                                if members.is_empty() {
+                                    view! { <option value="" disabled>"No team members yet"</option> }.into_view()
+                                } else {
+                                    members.into_iter().map(|t| {
+                                        let id = t.id.to_string();
+                                        let label = format!("{} ({})", t.name, t.email);
+                                        let selected = responsible_id.get() == id;
+                                        view! { <option value=id selected=selected>{label}</option> }
+                                    }).collect_view()
+                                }
+                            })}
+                        </select>
+                        <button type="button" class="btn btn-outline btn-quick-add" title="Add Team Member" on:click=move |_| set_quick_add_team.set(true)>"+"</button>
+                    </div>
                 </div>
 
                 <button class="btn btn-primary" type="submit" disabled=move || submitting.get() style="margin-top: 1rem;">
@@ -320,16 +397,17 @@ pub fn MachineForm(
                                 tooling_number: None,
                                 notes: None,
                             };
+                            let toast = toast_rfq;
                             spawn_local(async move {
                                 match api::post::<PurchaseRfq, _>(&format!("/machines/{mid}/purchase-rfqs"), &rfq_req).await {
                                     Ok(_) => {
                                         set_rfq_number.set(String::new());
                                         set_rfq_po.set(String::new());
                                         rfqs.refetch();
+                                        toast.success("RFQ added");
                                     }
                                     Err(e) => {
-                                        web_sys::window()
-                                            .and_then(|w| w.alert_with_message(&format!("Add RFQ failed: {e}")).ok());
+                                        toast.error(&format!("Add RFQ failed: {e}"));
                                     }
                                 }
                             });
@@ -338,5 +416,169 @@ pub fn MachineForm(
                 </div>
             </Show>
         </div>
+
+        // Quick-add modals
+        <Show when=move || quick_add_type.get()>
+            <QuickAddModal
+                title="Add Machine Type".to_string()
+                fields=vec![
+                    FieldDef { label: "Name", name: "name", required: true },
+                    FieldDef { label: "Description", name: "description", required: false },
+                ]
+                on_submit=Callback::new({
+                    let toast = toast_type;
+                    move |vals: HashMap<String, String>| {
+                        let toast = toast.clone();
+                        spawn_local(async move {
+                            match api::post::<MachineType, _>("/machine-types", &serde_json::json!({
+                                "name": vals.get("name").cloned().unwrap_or_default(),
+                                "description": vals.get("description").cloned(),
+                            })).await {
+                                Ok(created) => {
+                                    set_machine_type_id.set(created.id.to_string());
+                                    trigger_ref_refresh();
+                                    toast.success("Machine type added");
+                                }
+                                Err(e) => {
+                                    toast.error(&format!("Failed: {e}"));
+                                }
+                            }
+                            set_quick_add_type.set(false);
+                        });
+                    }
+                })
+                on_close=Callback::new(move |_: ()| set_quick_add_type.set(false))
+            />
+        </Show>
+        <Show when=move || quick_add_mfr.get()>
+            <QuickAddModal
+                title="Add Manufacturer".to_string()
+                fields=vec![
+                    FieldDef { label: "Name", name: "name", required: true },
+                    FieldDef { label: "Website", name: "website", required: false },
+                ]
+                on_submit=Callback::new({
+                    let toast = toast_mfr;
+                    move |vals: HashMap<String, String>| {
+                        let toast = toast.clone();
+                        spawn_local(async move {
+                            match api::post::<Manufacturer, _>("/manufacturers", &serde_json::json!({
+                                "name": vals.get("name").cloned().unwrap_or_default(),
+                                "website": vals.get("website").cloned(),
+                            })).await {
+                                Ok(created) => {
+                                    set_manufacturer_id.set(created.id.to_string());
+                                    trigger_ref_refresh();
+                                    toast.success("Manufacturer added");
+                                }
+                                Err(e) => {
+                                    toast.error(&format!("Failed: {e}"));
+                                }
+                            }
+                            set_quick_add_mfr.set(false);
+                        });
+                    }
+                })
+                on_close=Callback::new(move |_: ()| set_quick_add_mfr.set(false))
+            />
+        </Show>
+        <Show when=move || quick_add_loc.get()>
+            <QuickAddModal
+                title="Add Location".to_string()
+                fields=vec![
+                    FieldDef { label: "Area", name: "area", required: true },
+                    FieldDef { label: "Line", name: "line", required: true },
+                ]
+                on_submit=Callback::new({
+                    let toast = toast_loc;
+                    move |vals: HashMap<String, String>| {
+                        let toast = toast.clone();
+                        spawn_local(async move {
+                            match api::post::<Location, _>("/locations", &serde_json::json!({
+                                "area": vals.get("area").cloned().unwrap_or_default(),
+                                "line": vals.get("line").cloned().unwrap_or_default(),
+                            })).await {
+                                Ok(created) => {
+                                    set_location_id.set(created.id.to_string());
+                                    trigger_ref_refresh();
+                                    toast.success("Location added");
+                                }
+                                Err(e) => {
+                                    toast.error(&format!("Failed: {e}"));
+                                }
+                            }
+                            set_quick_add_loc.set(false);
+                        });
+                    }
+                })
+                on_close=Callback::new(move |_: ()| set_quick_add_loc.set(false))
+            />
+        </Show>
+        <Show when=move || quick_add_proj.get()>
+            <QuickAddModal
+                title="Add Project".to_string()
+                fields=vec![
+                    FieldDef { label: "Name", name: "name", required: true },
+                    FieldDef { label: "Code", name: "code", required: false },
+                ]
+                on_submit=Callback::new({
+                    let toast = toast_proj;
+                    move |vals: HashMap<String, String>| {
+                        let toast = toast.clone();
+                        spawn_local(async move {
+                            match api::post::<Project, _>("/projects", &serde_json::json!({
+                                "name": vals.get("name").cloned().unwrap_or_default(),
+                                "code": vals.get("code").cloned(),
+                            })).await {
+                                Ok(created) => {
+                                    set_project_id.set(created.id.to_string());
+                                    trigger_ref_refresh();
+                                    toast.success("Project added");
+                                }
+                                Err(e) => {
+                                    toast.error(&format!("Failed: {e}"));
+                                }
+                            }
+                            set_quick_add_proj.set(false);
+                        });
+                    }
+                })
+                on_close=Callback::new(move |_: ()| set_quick_add_proj.set(false))
+            />
+        </Show>
+        <Show when=move || quick_add_team.get()>
+            <QuickAddModal
+                title="Add Team Member".to_string()
+                fields=vec![
+                    FieldDef { label: "Name", name: "name", required: true },
+                    FieldDef { label: "Email", name: "email", required: true },
+                    FieldDef { label: "Role", name: "role", required: false },
+                ]
+                on_submit=Callback::new({
+                    let toast = toast_team;
+                    move |vals: HashMap<String, String>| {
+                        let toast = toast.clone();
+                        spawn_local(async move {
+                            match api::post::<TeamMember, _>("/team-members", &serde_json::json!({
+                                "name": vals.get("name").cloned().unwrap_or_default(),
+                                "email": vals.get("email").cloned().unwrap_or_default(),
+                                "role": vals.get("role").cloned(),
+                            })).await {
+                                Ok(created) => {
+                                    set_responsible_id.set(created.id.to_string());
+                                    trigger_ref_refresh();
+                                    toast.success("Team member added");
+                                }
+                                Err(e) => {
+                                    toast.error(&format!("Failed: {e}"));
+                                }
+                            }
+                            set_quick_add_team.set(false);
+                        });
+                    }
+                })
+                on_close=Callback::new(move |_: ()| set_quick_add_team.set(false))
+            />
+        </Show>
     }
 }

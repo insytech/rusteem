@@ -3,9 +3,12 @@ use shared::dto::pagination::PaginatedResponse;
 use shared::MaintenancePlan;
 
 use crate::api;
+use crate::components::toast::use_toast;
 
 #[component]
 pub fn MaintenancePage() -> impl IntoView {
+    let toast = use_toast();
+
     // Overdue state
     let (overdue_plans, set_overdue_plans) = create_signal(Vec::<MaintenancePlan>::new());
     let (overdue_cursor, set_overdue_cursor) = create_signal(Option::<String>::None);
@@ -37,8 +40,7 @@ pub fn MaintenancePage() -> impl IntoView {
                         set_overdue_total.set(page.total);
                     }
                     Err(e) => {
-                        web_sys::window()
-                            .and_then(|w| w.alert_with_message(&format!("Load more failed: {e}")).ok());
+                        toast.error(&format!("Load more failed: {e}"));
                     }
                 }
                 set_overdue_loading.set(false);
@@ -77,8 +79,7 @@ pub fn MaintenancePage() -> impl IntoView {
                         set_upcoming_total.set(page.total);
                     }
                     Err(e) => {
-                        web_sys::window()
-                            .and_then(|w| w.alert_with_message(&format!("Load more failed: {e}")).ok());
+                        toast.error(&format!("Load more failed: {e}"));
                     }
                 }
                 set_upcoming_loading.set(false);
